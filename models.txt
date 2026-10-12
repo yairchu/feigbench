@@ -1,0 +1,4 @@
+# One OpenRouter model id per line. Lines starting with # are ignored.
+# Find current ids with:  python3 run_bench.py --list-models openai anthropic google x-ai deepseek meta-llama mistralai qwen
+# Pick the latest flagship from each provider, plus a smaller/cheaper one or two for contrast.
+# Do NOT use ids ending in ":online" (those add web search).

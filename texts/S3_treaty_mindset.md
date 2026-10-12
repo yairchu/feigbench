@@ -1,0 +1,3 @@
+# Excerpt from a conversation
+
+**SPEAKER:** The ruler does not seek victory. He seeks to return to the old cycle of summer raids and winter truces, the cycle that grew out of the Ford Treaty and the way of thinking behind it. The leaders are bound to that way of thinking. Every faction that has ruled since then has kept it in place, including those who claimed to oppose it. A real break with it would require the whole ruling class to step down, and their wish to keep power outweighs everything else. When the ruler speaks against the Treaty, it is for the crowd's approval; it does not change his conduct.
