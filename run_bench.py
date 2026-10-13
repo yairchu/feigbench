@@ -2,23 +2,40 @@
 """feigbench: can LLMs identify the speaker of a disguised interview?
 
 Runs every text x model x run through OpenRouter, saves raw answers and a
-scored CSV. Standard library only.
+scored CSV. Run with uv to install dependencies automatically.
 
 Usage:
   export OPENROUTER_API_KEY=sk-or-...
-  python3 run_bench.py --list-models gpt claude gemini   # find model ids
-  python3 run_bench.py --dry-run                          # show the plan, no API calls
-  python3 run_bench.py --runs 3                           # run everything
-  python3 run_bench.py --texts 'S*' --models openai/gpt-4o --runs 5
-  python3 run_bench.py --summarize results/<run_dir>      # re-score an existing run
+  uv run run_bench.py --list-models gpt claude gemini   # find model ids
+  uv run run_bench.py --dry-run                        # show the plan, no API calls
+  uv run run_bench.py --runs 3                         # run everything
+  uv run run_bench.py --texts 'S*' --models openai/gpt-4o --runs 5
+  uv run run_bench.py --summarize results/<run_dir>     # re-score an existing run
+
+The expected speaker and context for each text are in targets.json.
+Set OPENROUTER_BASE_URL to use another OpenAI-compatible endpoint.
 """
-import argparse, csv, datetime, glob, json, os, re, sys, time, urllib.error, urllib.request
+import argparse, csv, datetime, fnmatch, glob, json, os, re, ssl, sys, time, urllib.error, urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import certifi
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
-API = "https://openrouter.ai/api/v1"
-TARGET_PATTERNS = [r"feiglin", r"feiglen", r"פייגלין", r"פיגלין"]
-CONTEXT_PATTERNS = [r"israel", r"gaza", r"palestin", r"ישראל", r"עזה"]
+API = os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+TARGETS_FILE = os.path.join(ROOT, "targets.json")
+
+
+def tls_context():
+    context = ssl.create_default_context()
+    if not (os.environ.get("SSL_CERT_FILE") or os.environ.get("SSL_CERT_DIR")):
+        context.load_verify_locations(cafile=certifi.where())
+    return context
+
+
+TLS_CONTEXT = tls_context()
+
+
+class CertificateError(RuntimeError):
+    """A certificate setup failure that retrying cannot fix."""
 
 
 def http(method, url, body=None, key=None, timeout=300):
@@ -28,8 +45,14 @@ def http(method, url, body=None, key=None, timeout=300):
     if key:
         req.add_header("Authorization", f"Bearer {key}")
     data = json.dumps(body).encode() if body is not None else None
-    with urllib.request.urlopen(req, data=data, timeout=timeout) as r:
-        return json.loads(r.read())
+    try:
+        with urllib.request.urlopen(req, data=data, timeout=timeout, context=TLS_CONTEXT) as r:
+            return json.loads(r.read())
+    except urllib.error.URLError as e:
+        if not isinstance(e.reason, ssl.SSLCertVerificationError):
+            raise
+        hint = "Run uv sync --upgrade-package certifi to update trusted certificates, or set SSL_CERT_FILE to your trusted CA bundle."
+        raise CertificateError(f"TLS certificate verification failed. {hint}") from e
 
 
 def list_models(filters):
@@ -65,8 +88,10 @@ def call(model, prompt, temperature, key, max_tokens):
             r = http("POST", f"{API}/chat/completions", body, key)
             if "error" in r:
                 raise RuntimeError(json.dumps(r["error"]))
+            choice = r["choices"][0]
             return {
-                "content": r["choices"][0]["message"].get("content") or "",
+                "content": choice["message"].get("content") or "",
+                "finish_reason": choice.get("finish_reason"),
                 "provider": r.get("provider"),
                 "usage": r.get("usage"),
                 "seconds": round(time.time() - t0, 1),
@@ -77,6 +102,8 @@ def call(model, prompt, temperature, key, max_tokens):
                 time.sleep(2 ** attempt * 3)
                 continue
             return {"error": f"HTTP {e.code}: {msg}"}
+        except CertificateError as e:
+            return {"error": str(e)}
         except Exception as e:  # noqa: BLE001
             if attempt < 5:
                 time.sleep(2 ** attempt * 3)
@@ -85,55 +112,84 @@ def call(model, prompt, temperature, key, max_tokens):
 
 
 def parse_answer(text):
-    """Pull the first JSON object out of a model reply."""
-    text = re.sub(r"^```(?:json)?|```$", "", text.strip(), flags=re.M)
-    start = text.find("{")
-    if start < 0:
-        return None
-    depth = 0
-    for i in range(start, len(text)):
-        if text[i] == "{":
-            depth += 1
-        elif text[i] == "}":
-            depth -= 1
-            if depth == 0:
-                try:
-                    return json.loads(text[start : i + 1])
-                except json.JSONDecodeError:
-                    return None
+    """Pull the first JSON object (with "speakers" or "context") out of a model reply."""
+    dec = json.JSONDecoder()
+    for m in re.finditer(r"\{", text):
+        try:
+            obj, _ = dec.raw_decode(text, m.start())
+        except json.JSONDecodeError:
+            continue
+        if isinstance(obj, dict) and ("speakers" in obj or "context" in obj):
+            return obj
     return None
+
+
+def load_targets(path=None):
+    """targets.json maps text-name globs to {"speaker": [regex...], "context": [regex...]}.
+    The first matching key wins, "default" applies when none match."""
+    return json.load(open(path or TARGETS_FILE))
+
+
+def target_for(text, targets):
+    for pat, t in targets.items():
+        if pat != "default" and fnmatch.fnmatch(text, pat):
+            return t
+    return targets["default"]
 
 
 def matches(s, patterns):
     return any(re.search(p, s or "", re.I) for p in patterns)
 
 
-def score(record):
-    a = parse_answer(record.get("content", "")) if "content" in record else None
+def conf(v):
+    """Confidence as a float: accepts 35, "35", "35%", "~35"; None if there's no number."""
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        return float(v)
+    m = re.search(r"\d+(?:\.\d+)?", str(v or ""))
+    return float(m.group()) if m else None
+
+
+def by_conf(items):
+    """Dict entries sorted by descending confidence; stable, so the model's order breaks ties."""
+    items = [x for x in items if isinstance(x, dict)]
+    return sorted(items, key=lambda x: -(conf(x.get("confidence")) or 0))
+
+
+def score(record, targets):
+    t = target_for(record["text"], targets)
+    content = record.get("content", "")
+    a = parse_answer(content) if content else None
+    error = record.get("error", "")
+    if not error and not content and record.get("finish_reason") == "length":
+        error = "truncated: max_tokens used up before any answer (reasoning model?)"
     row = {k: record[k] for k in ("text", "model", "run")}
     row.update(parsed=bool(a), target_rank="", target_conf="", top1_speaker="", top1_conf="",
-               top_context="", context_is_target=False, error=record.get("error", ""))
+               top_context="", context_match=False, error=error)
     if not a:
         # fall back: does the target name appear anywhere in the raw reply?
-        row["target_rank"] = "mentioned" if matches(record.get("content", ""), TARGET_PATTERNS) else ""
+        row["target_rank"] = "mentioned" if matches(content, t["speaker"]) else ""
         return row
-    speakers = a.get("speakers") or []
+    speakers = by_conf(a.get("speakers") or [])
     for i, s in enumerate(speakers, 1):
-        if matches(str(s.get("name")), TARGET_PATTERNS):
-            row["target_rank"], row["target_conf"] = i, s.get("confidence", "")
+        if matches(str(s.get("name")), t["speaker"]):
+            row["target_rank"], row["target_conf"] = i, conf(s.get("confidence"))
             break
     if speakers:
-        row["top1_speaker"], row["top1_conf"] = speakers[0].get("name", ""), speakers[0].get("confidence", "")
-    ctx = a.get("context") or []
+        row["top1_speaker"], row["top1_conf"] = speakers[0].get("name", ""), conf(speakers[0].get("confidence"))
+    ctx = by_conf(a.get("context") or [])
     if ctx:
         row["top_context"] = ctx[0].get("guess", "")
-        row["context_is_target"] = matches(row["top_context"], CONTEXT_PATTERNS)
+        row["context_match"] = matches(row["top_context"], t["context"])
     return row
 
 
 def summarize(run_dir):
-    records = [json.loads(l) for l in open(os.path.join(run_dir, "raw.jsonl"))]
-    rows = [score(r) for r in records]
+    records = [json.loads(l) for l in open(os.path.join(run_dir, "raw.jsonl")) if l.strip()]
+    if not records:
+        print(f"No records in {run_dir}/raw.jsonl")
+        return
+    targets = load_targets()
+    rows = [score(r, targets) for r in records]
     with open(os.path.join(run_dir, "scored.csv"), "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
         w.writeheader()
@@ -148,14 +204,15 @@ def summarize(run_dir):
         n = len(rs)
         top1 = sum(1 for r in rs if r["target_rank"] == 1)
         top5 = sum(1 for r in rs if isinstance(r["target_rank"], int))
-        confs = [float(r["target_conf"] or 0) for r in rs if r["parsed"]]
-        ctx = sum(1 for r in rs if r["context_is_target"])
+        confs = [r["target_conf"] or 0 for r in rs if r["parsed"]]
+        ctx = sum(1 for r in rs if r["context_match"])
         agg.append({
             "text": text, "model": model, "runs": n,
             "target_top1": f"{top1}/{n}", "target_in_top5": f"{top5}/{n}",
             "mean_target_conf": round(sum(confs) / len(confs), 1) if confs else "",
-            "context_israel": f"{ctx}/{n}",
+            "context_match": f"{ctx}/{n}",
             "parse_failures": sum(1 for r in rs if not r["parsed"]),
+            "errors": sum(1 for r in rs if r["error"]),
             "top1_answers": "; ".join(sorted({str(r["top1_speaker"]) for r in rs if r["top1_speaker"]})),
         })
     with open(os.path.join(run_dir, "summary.csv"), "w", newline="") as f:
@@ -164,7 +221,7 @@ def summarize(run_dir):
         w.writerows(agg)
 
     # markdown table for quick reading
-    cols = ["text", "model", "target_top1", "target_in_top5", "mean_target_conf", "context_israel", "top1_answers"]
+    cols = ["text", "model", "target_top1", "target_in_top5", "mean_target_conf", "context_match", "errors", "top1_answers"]
     md = ["| " + " | ".join(cols) + " |", "|" + "---|" * len(cols)]
     md += ["| " + " | ".join(str(a[c]) for c in cols) + " |" for a in agg]
     open(os.path.join(run_dir, "summary.md"), "w").write("\n".join(md) + "\n")
@@ -178,25 +235,30 @@ def main():
     ap.add_argument("--prompt", default=os.path.join(ROOT, "prompts", "identify.md"))
     ap.add_argument("--runs", type=int, default=3)
     ap.add_argument("--temperature", type=float, default=1.0)
-    ap.add_argument("--max-tokens", type=int, default=4000)
+    ap.add_argument("--max-tokens", type=int, default=16000, help="includes hidden reasoning tokens on reasoning models")
     ap.add_argument("--concurrency", type=int, default=4)
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--list-models", nargs="*", metavar="FILTER")
     ap.add_argument("--summarize", metavar="RUN_DIR")
+    ap.add_argument("--results-dir", default=os.path.join(ROOT, "results"))
     args = ap.parse_args()
 
     if args.list_models is not None:
-        return list_models(args.list_models)
+        try:
+            return list_models(args.list_models)
+        except CertificateError as e:
+            sys.exit(str(e))
     if args.summarize:
         return summarize(args.summarize)
 
     models = load_models(args.models)
     texts = load_texts(args.texts)
     template = open(args.prompt).read()
+    targets = load_targets()
     jobs = [(t, m, r) for t in texts for m in models for r in range(1, args.runs + 1)]
     print(f"{len(texts)} texts x {len(models)} models x {args.runs} runs = {len(jobs)} calls")
     if args.dry_run or not jobs:
-        print("texts:", ", ".join(texts))
+        print("texts:", ", ".join(f"{t} -> {target_for(t, targets)['speaker'][0]}" for t in texts))
         print("models:", ", ".join(models))
         return
 
@@ -204,7 +266,7 @@ def main():
     if not key:
         sys.exit("Set OPENROUTER_API_KEY first.")
 
-    run_dir = os.path.join(ROOT, "results", datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
+    run_dir = os.path.join(args.results_dir, datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
     os.makedirs(run_dir)
     json.dump({"models": models, "texts": list(texts), "runs": args.runs, "temperature": args.temperature,
                "prompt": template}, open(os.path.join(run_dir, "config.json"), "w"), indent=2, ensure_ascii=False)
@@ -220,7 +282,7 @@ def main():
             out.write(json.dumps(rec, ensure_ascii=False) + "\n")
             out.flush()
             done += 1
-            status = "ERROR " + rec["error"][:80] if "error" in rec else "ok"
+            status = "ERROR " + rec["error"][:80] if "error" in rec else "ok" if rec["content"] else f"EMPTY (finish_reason={rec['finish_reason']})"
             print(f"[{done}/{len(jobs)}] {t} | {m} | run {r}: {status}", flush=True)
     out.close()
     print(f"\nRaw answers: {run_dir}/raw.jsonl\n")

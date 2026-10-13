@@ -1,0 +1,6 @@
+{
+  "default": {
+    "speaker": ["feiglin", "feiglen", "פייגלין", "פיגלין"],
+    "context": ["israel", "gaza", "palestin", "ישראל", "עזה"]
+  }
+}

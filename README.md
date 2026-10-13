@@ -61,26 +61,35 @@ The manual runs had confounds this script removes:
 
 ## Running
 
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/) first (`brew install uv` on macOS), then run these commands from the project directory. `uv run` sets up Python 3.13 and the project environment automatically, using the dependencies pinned in `uv.lock`.
+
 ```bash
 export OPENROUTER_API_KEY=sk-or-...           # never commit this
-python3 run_bench.py --list-models openai anthropic google x-ai deepseek   # pick ids
+uv run run_bench.py --list-models openai anthropic google x-ai deepseek   # pick ids
 # put the chosen ids in models.txt
-python3 run_bench.py --dry-run                 # shows how many calls
-python3 run_bench.py --runs 3                  # everything
-python3 run_bench.py --texts 'S*' --runs 5     # only the excerpts
-python3 run_bench.py --summarize results/<dir> # re-score an existing run
+uv run run_bench.py --dry-run                 # shows how many calls
+uv run run_bench.py --runs 3                  # everything
+uv run run_bench.py --texts 'S*' --runs 5     # only the excerpts
+uv run run_bench.py --summarize results/<dir> # re-score an existing run
+uv run python -m unittest discover tests             # offline tests, no key or network needed
 ```
 
-Standard library only, no install needed. Each run writes to `results/<timestamp>/`:
+The tests replace the HTTP layer with a mock that returns scripted OpenRouter replies (clean JSON, messy JSON with `"35%"` confidences, a reasoning model that hit `max_tokens`, a 503 then success, a 400). OpenRouter has no sandbox of its own. To try a real call cheaply, use one of its `:free` model ids.
+
+`targets.json` says which speaker and context count as correct for each text, as regexes keyed by a glob over text names (first match wins, `default` otherwise). Speaker and context lists are re-sorted by the model's confidence before ranking, since models don't always list them in order. `--max-tokens` defaults to 16000 because reasoning models count hidden reasoning against it; a reply that ran out before answering is reported as `truncated` in the `error` column.
+
+HTTPS requests use the `certifi` CA bundle, so python.org installations do not need a separate macOS certificate setup. For a custom certificate authority, set `SSL_CERT_FILE` to your trusted CA bundle (or `SSL_CERT_DIR` to an OpenSSL certificate directory). Certificate verification remains enabled.
+
+Each run writes to `results/<timestamp>/`:
 
 - `raw.jsonl`: every reply, verbatim
-- `scored.csv`: one row per call (Feiglin's rank and confidence, top-1 speaker, top context, whether the context is Israel/Gaza)
-- `summary.csv` / `summary.md`: per text × model (Feiglin top-1 rate, in-top-5 rate, mean confidence, Israel-context rate, the top-1 names given)
+- `scored.csv`: one row per call (target's rank and confidence, top-1 speaker, top context, whether the context matches)
+- `summary.csv` / `summary.md`: per text × model (target top-1 rate, in-top-5 rate, mean confidence, context-match rate, errors, the top-1 names given)
 
 ## Next steps
 
 1. **Run A–H and S1–S6** across 4–6 models, 3 runs each.
-2. **Control speakers.** Disguise a comparable interview by Daniella Weiss, Smotrich or Ben-Gvir the same way, to check that "Feiglin" is a real identification and not the default answer for this camp. Score with the matching name (edit `TARGET_PATTERNS` or add a per-text target).
+2. **Control speakers.** Disguise a comparable interview by Daniella Weiss, Smotrich or Ben-Gvir the same way, to check that "Feiglin" is a real identification and not the default answer for this camp. Score with the matching name by adding an entry to `targets.json`.
 3. **Control conflict.** A text with the same structure from a different conflict (e.g. a Russian nationalist on Ukraine), to check the base rate of guessing "Israel".
 4. **Minimal excerpt.** Find the shortest passage that still gets Feiglin.
 5. **Moral-judgment variant (optional).** Ask models to rate how extreme the text is, disguised vs. original.
