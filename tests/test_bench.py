@@ -212,6 +212,10 @@ class EffortTest(unittest.TestCase):
             self.assertTrue(body["provider"]["require_parameters"])
             run_bench.call("m", "prompt", 1, "key", 16000)
             self.assertNotIn("reasoning", http.call_args.args[2])
+            run_bench.call("m", "prompt", None, "key", 16000, "low")
+            self.assertNotIn("temperature", http.call_args.args[2])
+            self.assertEqual(http.call_args.args[2]["reasoning"], {"effort": "low"})
+            self.assertTrue(http.call_args.args[2]["provider"]["require_parameters"])
 
     def test_preflight_support(self):
         catalog = {"data": [{"id": "m", "reasoning": {
@@ -239,6 +243,7 @@ class EffortTest(unittest.TestCase):
             run_bench.main()
             run_dir, = glob.glob(os.path.join(directory, "2*"))
             self.assertEqual(call.call_count, 3)
+            self.assertTrue(all(c.args[2] == 1.0 for c in call.call_args_list))
             self.assertEqual({c.args[-1] for c in call.call_args_list}, {"low", "medium", "high"})
             for name in ("scored.csv", "summary.csv"):
                 self.assertEqual({r["effort"] for r in read_csv(os.path.join(run_dir, name))}, {"low", "medium", "high"})
@@ -248,6 +253,20 @@ class EffortTest(unittest.TestCase):
             points = model_summary([run_bench.score(r, run_bench.load_targets()) for r in records])
             self.assertEqual(len(points), 3)
             self.assertTrue(all(p["calls"] == 1 for p in points))
+
+    def test_sweep_omits_unsupported_temperature(self):
+        with tempfile.TemporaryDirectory() as directory, \
+             mock.patch.object(run_bench, "call", return_value={"error": "test"}) as call, \
+             mock.patch.object(run_bench, "validate_efforts", return_value={"m": {"supported_parameters": ["reasoning", "max_tokens"]}}), \
+             mock.patch.dict(os.environ, {"OPENROUTER_API_KEY": "test"}), \
+             mock.patch.object(sys, "argv", ["run_bench.py", "--models", "m", "--texts", "S1_*", "--runs", "1",
+                                             "--efforts", "low", "--results-dir", directory]), \
+             mock.patch("sys.stdout", new=io.StringIO()), mock.patch("plot_bench.plot_results"):
+            run_bench.main()
+            self.assertIsNone(call.call_args.args[2])
+            run_dir, = glob.glob(os.path.join(directory, "2*"))
+            with open(os.path.join(run_dir, "config.json")) as f:
+                self.assertEqual(json.load(f)["effective_temperatures"], {"m": None})
 
 
 if __name__ == "__main__":

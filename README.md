@@ -100,6 +100,12 @@ OpenRouter supports [reasoning effort settings](https://openrouter.ai/docs/guide
 
 Effort is saved in the run configuration, raw records, and every summary. The chart connects explicit effort points in effort order when their texts and run counts match. `--efforts default` (the default) leaves effort unspecified; older runs without effort metadata are also labeled `default` and never assigned a guessed level or connected into an effort series. Effort levels describe requested settings rather than measured compute, and their meaning differs across providers. Additional live runs are needed to measure the cost/score tradeoff; existing replies cannot be rescored into new effort levels.
 
+During explicit effort sweeps, models whose advertised `supported_parameters` omit `temperature` use their provider's temperature default. The runner prints this and records `effective_temperatures` in `config.json` (`null` means omitted). Sending temperature to these models with strict parameter routing would reject every endpoint even when reasoning effort is supported. To smoke-test routing before a full sweep, run one text and one effort level first:
+
+```bash
+uv run run_bench.py --models anthropic/claude-haiku-5.5,openai/gpt-6-luna --texts 'S1_*' --efforts low --runs 1
+```
+
 ## Next steps
 
 1. **Run A–H and S1–S6** across 4–6 models, 3 runs each.

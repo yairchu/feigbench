@@ -92,7 +92,7 @@ def validate_efforts(models, efforts):
         for effort in explicit:
             if (supported is not None and effort not in supported) or (effort == "none" and reasoning.get("mandatory")):
                 raise ValueError(f"{model} does not support effort {effort}; supported levels: {supported}.")
-        metadata[model] = reasoning
+        metadata[model] = {**reasoning, "supported_parameters": m.get("supported_parameters")}
     return metadata
 
 
@@ -113,9 +113,10 @@ def call(model, prompt, temperature, key, max_tokens, effort="default"):
     body = {
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
-        "temperature": temperature,
         "max_tokens": max_tokens,
     }
+    if temperature is not None:
+        body["temperature"] = temperature
     if effort != "default":
         body["reasoning"] = {"effort": effort}
         body["provider"] = {"require_parameters": True}
@@ -328,17 +329,24 @@ def main():
         reasoning_models = validate_efforts(models, efforts)
     except (ValueError, CertificateError, urllib.error.URLError) as e:
         sys.exit(str(e))
+    temperatures = {}
+    for model in models:
+        parameters = reasoning_models.get(model, {}).get("supported_parameters")
+        temperatures[model] = args.temperature if parameters is None or "temperature" in parameters else None
+        if temperatures[model] is None:
+            print(f"{model}: omitting temperature (not advertised as supported); using provider default")
 
     run_dir = os.path.join(args.results_dir, datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
     os.makedirs(run_dir)
     json.dump({"models": models, "texts": list(texts), "runs": args.runs, "temperature": args.temperature,
                "efforts": efforts, "reasoning_models": reasoning_models, "max_tokens": args.max_tokens,
+               "effective_temperatures": temperatures,
                "prompt": template}, open(os.path.join(run_dir, "config.json"), "w"), indent=2, ensure_ascii=False)
 
     out = open(os.path.join(run_dir, "raw.jsonl"), "w")
     done = 0
     with ThreadPoolExecutor(args.concurrency) as ex:
-        futs = {ex.submit(call, m, template.replace("{{TEXT}}", texts[t]), args.temperature, key, args.max_tokens, e): (t, m, e, r)
+        futs = {ex.submit(call, m, template.replace("{{TEXT}}", texts[t]), temperatures[m], key, args.max_tokens, e): (t, m, e, r)
                 for t, m, e, r in jobs}
         for fut in as_completed(futs):
             t, m, e, r = futs[fut]
