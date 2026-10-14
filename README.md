@@ -71,6 +71,7 @@ uv run run_bench.py --dry-run                 # shows how many calls
 uv run run_bench.py --runs 3                  # everything
 uv run run_bench.py --texts 'S*' --runs 5     # only the excerpts
 uv run run_bench.py --summarize results/<dir> # re-score an existing run
+uv run plot_bench.py results/<dir>           # regenerate just the cost/score chart
 uv run python -m unittest discover tests             # offline tests, no key or network needed
 ```
 
@@ -85,6 +86,14 @@ Each run writes to `results/<timestamp>/`:
 - `raw.jsonl`: every reply, verbatim
 - `scored.csv`: one row per call (target's rank and confidence, top-1 speaker, top context, whether the context matches)
 - `summary.csv` / `summary.md`: per text × model (target top-1 rate, in-top-5 rate, mean confidence, context-match rate, errors, the top-1 names given)
+- `model_summary.csv`: per-model soft score, confidence components, and recorded dollar costs, excluding S6
+- `cost_score.png` / `cost_score.svg`: cost-versus-score scatter plot, generated automatically when complete costs are available
+
+The **soft score** is `(speaker confidence + context confidence) / 2`, on a 0–100 scale. Speaker confidence is the confidence assigned to the target speaker wherever they appear in the candidate list (zero if absent). Context confidence sums all matching context guesses, capped at 100%. Matches use `targets.json`; by default Israel, Gaza, and Palestine count as the Israeli context. Individual confidences are bounded to 0–100; missing or non-finite values contribute zero. Unparseable answers receive zero soft score.
+
+The plotted score averages runs within each text, then averages texts equally. `S6_leadership_only_control` stays in the per-text summaries but is excluded from the chart because it is a negative control. The dollar axis uses recorded `usage.cost`, averaged with the same text weighting. Missing costs stay unknown and models with incomplete costs are omitted from the chart. Zero-cost models use a linear dollar axis; otherwise it is logarithmic. Scores use models' self-reported confidence, so confidence calibration can affect comparisons.
+
+OpenRouter supports [reasoning effort settings](https://openrouter.ai/docs/guides/best-practices/reasoning-tokens) through a request such as `"reasoning": {"effort": "high"}`. Supported levels and defaults vary by model; `/api/v1/models` exposes their reasoning options. This runner currently leaves effort unspecified and produces one point per model. Comparing connected effort points requires explicit effort settings and additional benchmark runs.
 
 ## Next steps
 

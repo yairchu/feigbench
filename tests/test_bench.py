@@ -166,5 +166,41 @@ class ParseTest(unittest.TestCase):
         self.assertIsNone(run_bench.parse_answer("no json here"))
 
 
+class SoftScoreTest(unittest.TestCase):
+    def score(self, answer):
+        return run_bench.score({"text": "A_full_masked", "model": "m", "run": 1,
+                                "content": json.dumps(answer), "usage": {"cost": .002}},
+                               run_bench.load_targets())
+
+    def test_sums_matching_contexts_and_uses_non_top1_speaker(self):
+        row = self.score({"speakers": [{"name": "Someone else", "confidence": 60},
+                                       {"name": "Moshe Feiglin", "confidence": 40}],
+                          "context": [{"guess": "Israel 2023", "confidence": 50},
+                                      {"guess": "Gaza 2014", "confidence": 30},
+                                      {"guess": "Ukraine", "confidence": 20}]})
+        self.assertEqual((row["speaker_conf"], row["context_conf"], row["soft_score"]), (40, 80, 60))
+        self.assertEqual(row["target_rank"], 2)
+        self.assertEqual(row["cost_usd"], .002)
+
+    def test_caps_confidence_and_missing_matches_are_zero(self):
+        row = self.score({"context": [{"guess": "Israel", "confidence": 90},
+                                      {"guess": "Gaza", "confidence": 80}]})
+        self.assertEqual((row["speaker_conf"], row["context_conf"], row["soft_score"]), (0, 100, 50))
+        self.assertEqual(self.score({"speakers": []})["soft_score"], 0)
+        self.assertEqual(run_bench.probability(float("nan")), 0)
+        self.assertEqual(run_bench.probability(-10), 0)
+
+    def test_aggregation_weights_texts_equally_and_excludes_control(self):
+        from plot_bench import model_summary
+        row = self.score(CLEAN)
+        rows = [row, row, {**row, "text": "B_no_biography", "soft_score": 0, "cost_usd": .004},
+                {**row, "text": "S6_leadership_only_control", "soft_score": 100, "cost_usd": 1}]
+        point, = model_summary(rows)
+        self.assertEqual((point["texts"], point["calls"], point["soft_score"]), (2, 3, 35))
+        self.assertEqual(point["mean_cost_usd"], .003)
+        point, = model_summary([{**row, "cost_usd": None}])
+        self.assertIsNone(point["mean_cost_usd"])
+
+
 if __name__ == "__main__":
     unittest.main()

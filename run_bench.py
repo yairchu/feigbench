@@ -15,7 +15,7 @@ Usage:
 The expected speaker and context for each text are in targets.json.
 Set OPENROUTER_BASE_URL to use another OpenAI-compatible endpoint.
 """
-import argparse, csv, datetime, fnmatch, glob, json, os, re, ssl, sys, time, urllib.error, urllib.request
+import argparse, csv, datetime, fnmatch, glob, json, math, os, re, ssl, sys, time, urllib.error, urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import certifi
 
@@ -155,6 +155,11 @@ def by_conf(items):
     return sorted(items, key=lambda x: -(conf(x.get("confidence")) or 0))
 
 
+def probability(value):
+    value = conf(value)
+    return min(100., max(0., value)) if value is not None and math.isfinite(value) else 0.
+
+
 def score(record, targets):
     t = target_for(record["text"], targets)
     content = record.get("content", "")
@@ -164,7 +169,9 @@ def score(record, targets):
         error = "truncated: max_tokens used up before any answer (reasoning model?)"
     row = {k: record[k] for k in ("text", "model", "run")}
     row.update(parsed=bool(a), target_rank="", target_conf="", top1_speaker="", top1_conf="",
-               top_context="", context_match=False, error=error)
+               top_context="", context_match=False, error=error,
+               speaker_conf=0., context_conf=0., soft_score=0.,
+               cost_usd=(record.get("usage") or {}).get("cost"))
     if not a:
         # fall back: does the target name appear anywhere in the raw reply?
         row["target_rank"] = "mentioned" if matches(content, t["speaker"]) else ""
@@ -180,6 +187,10 @@ def score(record, targets):
     if ctx:
         row["top_context"] = ctx[0].get("guess", "")
         row["context_match"] = matches(row["top_context"], t["context"])
+    row["speaker_conf"] = probability(row["target_conf"])
+    row["context_conf"] = min(100., sum(probability(c.get("confidence")) for c in ctx
+                                       if matches(str(c.get("guess", "")), t["context"])))
+    row["soft_score"] = (row["speaker_conf"] + row["context_conf"]) / 2
     return row
 
 
@@ -211,6 +222,8 @@ def summarize(run_dir):
             "target_top1": f"{top1}/{n}", "target_in_top5": f"{top5}/{n}",
             "mean_target_conf": round(sum(confs) / len(confs), 1) if confs else "",
             "context_match": f"{ctx}/{n}",
+            "mean_context_conf": round(sum(r["context_conf"] for r in rs) / n, 2),
+            "soft_score": round(sum(r["soft_score"] for r in rs) / n, 2),
             "parse_failures": sum(1 for r in rs if not r["parsed"]),
             "errors": sum(1 for r in rs if r["error"]),
             "top1_answers": "; ".join(sorted({str(r["top1_speaker"]) for r in rs if r["top1_speaker"]})),
@@ -221,11 +234,13 @@ def summarize(run_dir):
         w.writerows(agg)
 
     # markdown table for quick reading
-    cols = ["text", "model", "target_top1", "target_in_top5", "mean_target_conf", "context_match", "errors", "top1_answers"]
+    cols = ["text", "model", "target_top1", "target_in_top5", "mean_target_conf", "context_match", "soft_score", "errors", "top1_answers"]
     md = ["| " + " | ".join(cols) + " |", "|" + "---|" * len(cols)]
     md += ["| " + " | ".join(str(a[c]) for c in cols) + " |" for a in agg]
     open(os.path.join(run_dir, "summary.md"), "w").write("\n".join(md) + "\n")
     print("\n".join(md))
+    from plot_bench import plot_results
+    plot_results(run_dir, rows)
 
 
 def main():

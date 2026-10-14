@@ -4,7 +4,10 @@ version = "0.1.0"
 description = "Benchmark speaker identification in disguised interviews"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = ["certifi>=2024.7.4"]
+dependencies = [
+    "certifi>=2024.7.4",
+    "matplotlib>=3.11.2",
+]
 
 [tool.uv]
 package = false
