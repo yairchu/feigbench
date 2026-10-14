@@ -66,10 +66,13 @@ Install [uv](https://docs.astral.sh/uv/getting-started/installation/) first (`br
 ```bash
 export OPENROUTER_API_KEY=sk-or-...           # never commit this
 uv run run_bench.py --list-models openai anthropic google x-ai deepseek   # pick ids
+uv run run_bench.py --list-efforts gemini gpt claude # inspect supported reasoning levels
 # put the chosen ids in models.txt
 uv run run_bench.py --dry-run                 # shows how many calls
 uv run run_bench.py --runs 3                  # everything
 uv run run_bench.py --texts 'S*' --runs 5     # only the excerpts
+uv run run_bench.py --efforts low medium high --runs 1 --dry-run # preview an effort sweep
+uv run run_bench.py --efforts low medium high --runs 1 # run all three settings
 uv run run_bench.py --summarize results/<dir> # re-score an existing run
 uv run plot_bench.py results/<dir>           # regenerate just the cost/score chart
 uv run python -m unittest discover tests             # offline tests, no key or network needed
@@ -86,14 +89,16 @@ Each run writes to `results/<timestamp>/`:
 - `raw.jsonl`: every reply, verbatim
 - `scored.csv`: one row per call (target's rank and confidence, top-1 speaker, top context, whether the context matches)
 - `summary.csv` / `summary.md`: per text × model (target top-1 rate, in-top-5 rate, mean confidence, context-match rate, errors, the top-1 names given)
-- `model_summary.csv`: per-model soft score, confidence components, and recorded dollar costs, excluding S6
+- `model_summary.csv`: per model × effort soft score, confidence components, and recorded dollar costs, excluding S6
 - `cost_score.png` / `cost_score.svg`: cost-versus-score scatter plot, generated automatically when complete costs are available
 
 The **soft score** is `(speaker confidence + context confidence) / 2`, on a 0–100 scale. Speaker confidence is the confidence assigned to the target speaker wherever they appear in the candidate list (zero if absent). Context confidence sums all matching context guesses, capped at 100%. Matches use `targets.json`; by default Israel, Gaza, and Palestine count as the Israeli context. Individual confidences are bounded to 0–100; missing or non-finite values contribute zero. Unparseable answers receive zero soft score.
 
 The plotted score averages runs within each text, then averages texts equally. `S6_leadership_only_control` stays in the per-text summaries but is excluded from the chart because it is a negative control. The dollar axis uses recorded `usage.cost`, averaged with the same text weighting. Missing costs stay unknown and models with incomplete costs are omitted from the chart. Zero-cost models use a linear dollar axis; otherwise it is logarithmic. Scores use models' self-reported confidence, so confidence calibration can affect comparisons.
 
-OpenRouter supports [reasoning effort settings](https://openrouter.ai/docs/guides/best-practices/reasoning-tokens) through a request such as `"reasoning": {"effort": "high"}`. Supported levels and defaults vary by model; `/api/v1/models` exposes their reasoning options. This runner currently leaves effort unspecified and produces one point per model. Comparing connected effort points requires explicit effort settings and additional benchmark runs.
+OpenRouter supports [reasoning effort settings](https://openrouter.ai/docs/guides/best-practices/reasoning-tokens) through a request such as `"reasoning": {"effort": "high"}`. Use `--efforts low medium high` to run each model at each requested setting (`mid` is accepted as an alias for `medium`). Other gateway levels are `none`, `minimal`, `xhigh`, and `max`; supported levels vary by model. `--list-efforts FILTER...` reads the model catalog's advertised levels and defaults. Before a live sweep, the runner checks model metadata and rejects known unsupported settings; it also requests providers that support the reasoning parameter. A dry run previews the call count offline and does not validate support.
+
+Effort is saved in the run configuration, raw records, and every summary. The chart connects explicit effort points in effort order when their texts and run counts match. `--efforts default` (the default) leaves effort unspecified; older runs without effort metadata are also labeled `default` and never assigned a guessed level or connected into an effort series. Effort levels describe requested settings rather than measured compute, and their meaning differs across providers. Additional live runs are needed to measure the cost/score tradeoff; existing replies cannot be rescored into new effort levels.
 
 ## Next steps
 

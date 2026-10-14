@@ -202,5 +202,53 @@ class SoftScoreTest(unittest.TestCase):
         self.assertIsNone(point["mean_cost_usd"])
 
 
+class EffortTest(unittest.TestCase):
+    def test_request_body_and_default(self):
+        reply = {"choices": [{"message": {"content": json.dumps(CLEAN)}, "finish_reason": "stop"}]}
+        with mock.patch.object(run_bench, "http", return_value=reply) as http:
+            run_bench.call("m", "prompt", 1, "key", 16000, "low")
+            body = http.call_args.args[2]
+            self.assertEqual(body["reasoning"], {"effort": "low"})
+            self.assertTrue(body["provider"]["require_parameters"])
+            run_bench.call("m", "prompt", 1, "key", 16000)
+            self.assertNotIn("reasoning", http.call_args.args[2])
+
+    def test_preflight_support(self):
+        catalog = {"data": [{"id": "m", "reasoning": {
+            "supported_efforts": ["low", "medium", "high"], "mandatory": True}},
+            {"id": "no-reasoning"}]}
+        with mock.patch.object(run_bench, "http", return_value=catalog) as http:
+            run_bench.validate_efforts(["m"], ["default"])
+            http.assert_not_called()
+            run_bench.validate_efforts(["m"], ["low", "medium", "high"])
+            for model, effort in [("m", "none"), ("m", "max"), ("no-reasoning", "low"), ("missing", "low")]:
+                with self.assertRaises(ValueError):
+                    run_bench.validate_efforts([model], [effort])
+
+    def test_sweep_records_and_summaries_remain_separate(self):
+        reply = {"content": json.dumps(CLEAN), "usage": {"cost": .002}, "finish_reason": "stop"}
+        with tempfile.TemporaryDirectory() as directory, \
+             mock.patch.object(run_bench, "call", return_value=reply) as call, \
+             mock.patch.object(run_bench, "validate_efforts", return_value={}), \
+             mock.patch.dict(os.environ, {"OPENROUTER_API_KEY": "test"}), \
+             mock.patch.object(sys, "argv", ["run_bench.py", "--models", "m", "--texts", "S1_*",
+                                             "--runs", "1", "--efforts", "low", "mid", "high", "low",
+                                             "--results-dir", directory]), \
+             mock.patch("sys.stdout", new=io.StringIO()), \
+             mock.patch("plot_bench.plot_results"):
+            run_bench.main()
+            run_dir, = glob.glob(os.path.join(directory, "2*"))
+            self.assertEqual(call.call_count, 3)
+            self.assertEqual({c.args[-1] for c in call.call_args_list}, {"low", "medium", "high"})
+            for name in ("scored.csv", "summary.csv"):
+                self.assertEqual({r["effort"] for r in read_csv(os.path.join(run_dir, name))}, {"low", "medium", "high"})
+            from plot_bench import model_summary
+            with open(os.path.join(run_dir, "raw.jsonl")) as f:
+                records = [json.loads(line) for line in f]
+            points = model_summary([run_bench.score(r, run_bench.load_targets()) for r in records])
+            self.assertEqual(len(points), 3)
+            self.assertTrue(all(p["calls"] == 1 for p in points))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -22,6 +22,7 @@ import certifi
 ROOT = os.path.dirname(os.path.abspath(__file__))
 API = os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
 TARGETS_FILE = os.path.join(ROOT, "targets.json")
+EFFORTS = ("default", "none", "minimal", "low", "medium", "high", "xhigh", "max")
 
 
 def tls_context():
@@ -62,6 +63,39 @@ def list_models(filters):
             print(m["id"])
 
 
+def list_efforts(filters):
+    for m in sorted(http("GET", f"{API}/models")["data"], key=lambda m: m["id"]):
+        if filters and not any(f.lower() in m["id"].lower() for f in filters):
+            continue
+        reasoning = m.get("reasoning") or {}
+        levels = reasoning.get("supported_efforts", "not advertised")
+        print(f"{m['id']}: {levels}; default={reasoning.get('default_effort', 'unspecified')}")
+
+
+def validate_efforts(models, efforts):
+    """Reject known unsupported requests before starting paid calls."""
+    explicit = [e for e in efforts if e != "default"]
+    if not explicit:
+        return {}
+    available = {m["id"]: m for m in http("GET", f"{API}/models")["data"]}
+    metadata = {}
+    for model in models:
+        if model not in available:
+            raise ValueError(f"Model {model} is absent from the model catalog.")
+        m = available[model]
+        reasoning = m.get("reasoning") or {}
+        if not reasoning and "reasoning" not in (m.get("supported_parameters") or []):
+            raise ValueError(f"{model} does not advertise reasoning support. Use --efforts default.")
+        if reasoning and "supported_efforts" not in reasoning:
+            raise ValueError(f"{model} does not advertise effort selection. Use --efforts default.")
+        supported = reasoning.get("supported_efforts")
+        for effort in explicit:
+            if (supported is not None and effort not in supported) or (effort == "none" and reasoning.get("mandatory")):
+                raise ValueError(f"{model} does not support effort {effort}; supported levels: {supported}.")
+        metadata[model] = reasoning
+    return metadata
+
+
 def load_models(arg):
     if os.path.isfile(arg):
         lines = open(arg).read().splitlines()
@@ -75,13 +109,16 @@ def load_texts(pattern):
     return {os.path.splitext(os.path.basename(p))[0]: open(p).read().strip() for p in paths}
 
 
-def call(model, prompt, temperature, key, max_tokens):
+def call(model, prompt, temperature, key, max_tokens, effort="default"):
     body = {
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "temperature": temperature,
         "max_tokens": max_tokens,
     }
+    if effort != "default":
+        body["reasoning"] = {"effort": effort}
+        body["provider"] = {"require_parameters": True}
     for attempt in range(6):
         try:
             t0 = time.time()
@@ -168,6 +205,7 @@ def score(record, targets):
     if not error and not content and record.get("finish_reason") == "length":
         error = "truncated: max_tokens used up before any answer (reasoning model?)"
     row = {k: record[k] for k in ("text", "model", "run")}
+    row["effort"] = record.get("effort", "default")
     row.update(parsed=bool(a), target_rank="", target_conf="", top1_speaker="", top1_conf="",
                top_context="", context_match=False, error=error,
                speaker_conf=0., context_conf=0., soft_score=0.,
@@ -206,19 +244,19 @@ def summarize(run_dir):
         w.writeheader()
         w.writerows(rows)
 
-    # aggregate per text x model
+    # aggregate per text x model x requested effort
     groups = {}
     for r in rows:
-        groups.setdefault((r["text"], r["model"]), []).append(r)
+        groups.setdefault((r["text"], r["model"], r["effort"]), []).append(r)
     agg = []
-    for (text, model), rs in sorted(groups.items()):
+    for (text, model, effort), rs in sorted(groups.items()):
         n = len(rs)
         top1 = sum(1 for r in rs if r["target_rank"] == 1)
         top5 = sum(1 for r in rs if isinstance(r["target_rank"], int))
         confs = [r["target_conf"] or 0 for r in rs if r["parsed"]]
         ctx = sum(1 for r in rs if r["context_match"])
         agg.append({
-            "text": text, "model": model, "runs": n,
+            "text": text, "model": model, "effort": effort, "runs": n,
             "target_top1": f"{top1}/{n}", "target_in_top5": f"{top5}/{n}",
             "mean_target_conf": round(sum(confs) / len(confs), 1) if confs else "",
             "context_match": f"{ctx}/{n}",
@@ -234,7 +272,7 @@ def summarize(run_dir):
         w.writerows(agg)
 
     # markdown table for quick reading
-    cols = ["text", "model", "target_top1", "target_in_top5", "mean_target_conf", "context_match", "soft_score", "errors", "top1_answers"]
+    cols = ["text", "model", "effort", "target_top1", "target_in_top5", "mean_target_conf", "context_match", "soft_score", "errors", "top1_answers"]
     md = ["| " + " | ".join(cols) + " |", "|" + "---|" * len(cols)]
     md += ["| " + " | ".join(str(a[c]) for c in cols) + " |" for a in agg]
     open(os.path.join(run_dir, "summary.md"), "w").write("\n".join(md) + "\n")
@@ -251,17 +289,21 @@ def main():
     ap.add_argument("--runs", type=int, default=3)
     ap.add_argument("--temperature", type=float, default=1.0)
     ap.add_argument("--max-tokens", type=int, default=16000, help="includes hidden reasoning tokens on reasoning models")
+    ap.add_argument("--efforts", nargs="+", choices=EFFORTS, default=["default"],
+                    type=lambda e: "medium" if e == "mid" else e,
+                    help="reasoning effort levels to sweep, e.g. low medium high; default leaves effort unspecified")
     ap.add_argument("--concurrency", type=int, default=4)
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--list-models", nargs="*", metavar="FILTER")
+    ap.add_argument("--list-efforts", nargs="*", metavar="FILTER", help="show advertised effort levels for matching model ids")
     ap.add_argument("--summarize", metavar="RUN_DIR")
     ap.add_argument("--results-dir", default=os.path.join(ROOT, "results"))
     args = ap.parse_args()
 
-    if args.list_models is not None:
+    if args.list_models is not None or args.list_efforts is not None:
         try:
-            return list_models(args.list_models)
-        except CertificateError as e:
+            return list_efforts(args.list_efforts) if args.list_efforts is not None else list_models(args.list_models)
+        except (CertificateError, urllib.error.URLError) as e:
             sys.exit(str(e))
     if args.summarize:
         return summarize(args.summarize)
@@ -270,35 +312,42 @@ def main():
     texts = load_texts(args.texts)
     template = open(args.prompt).read()
     targets = load_targets()
-    jobs = [(t, m, r) for t in texts for m in models for r in range(1, args.runs + 1)]
-    print(f"{len(texts)} texts x {len(models)} models x {args.runs} runs = {len(jobs)} calls")
+    efforts = list(dict.fromkeys(args.efforts))
+    jobs = [(t, m, e, r) for t in texts for m in models for e in efforts for r in range(1, args.runs + 1)]
+    print(f"{len(texts)} texts x {len(models)} models x {len(efforts)} efforts x {args.runs} runs = {len(jobs)} calls")
     if args.dry_run or not jobs:
         print("texts:", ", ".join(f"{t} -> {target_for(t, targets)['speaker'][0]}" for t in texts))
         print("models:", ", ".join(models))
+        print("efforts:", ", ".join(efforts), "(support is checked before live calls)")
         return
 
     key = os.environ.get("OPENROUTER_API_KEY")
     if not key:
         sys.exit("Set OPENROUTER_API_KEY first.")
+    try:
+        reasoning_models = validate_efforts(models, efforts)
+    except (ValueError, CertificateError, urllib.error.URLError) as e:
+        sys.exit(str(e))
 
     run_dir = os.path.join(args.results_dir, datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
     os.makedirs(run_dir)
     json.dump({"models": models, "texts": list(texts), "runs": args.runs, "temperature": args.temperature,
+               "efforts": efforts, "reasoning_models": reasoning_models, "max_tokens": args.max_tokens,
                "prompt": template}, open(os.path.join(run_dir, "config.json"), "w"), indent=2, ensure_ascii=False)
 
     out = open(os.path.join(run_dir, "raw.jsonl"), "w")
     done = 0
     with ThreadPoolExecutor(args.concurrency) as ex:
-        futs = {ex.submit(call, m, template.replace("{{TEXT}}", texts[t]), args.temperature, key, args.max_tokens): (t, m, r)
-                for t, m, r in jobs}
+        futs = {ex.submit(call, m, template.replace("{{TEXT}}", texts[t]), args.temperature, key, args.max_tokens, e): (t, m, e, r)
+                for t, m, e, r in jobs}
         for fut in as_completed(futs):
-            t, m, r = futs[fut]
-            rec = {"text": t, "model": m, "run": r, **fut.result()}
+            t, m, e, r = futs[fut]
+            rec = {"text": t, "model": m, "effort": e, "run": r, **fut.result()}
             out.write(json.dumps(rec, ensure_ascii=False) + "\n")
             out.flush()
             done += 1
             status = "ERROR " + rec["error"][:80] if "error" in rec else "ok" if rec["content"] else f"EMPTY (finish_reason={rec['finish_reason']})"
-            print(f"[{done}/{len(jobs)}] {t} | {m} | run {r}: {status}", flush=True)
+            print(f"[{done}/{len(jobs)}] {t} | {m} | effort {e} | run {r}: {status}", flush=True)
     out.close()
     print(f"\nRaw answers: {run_dir}/raw.jsonl\n")
     summarize(run_dir)
