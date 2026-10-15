@@ -14,7 +14,23 @@ VENDOR_COLORS = {"anthropic": "#cb6d43", "google": "#397bca", "openai": "#169987
                  "meta": "#806bb2", "meta-llama": "#806bb2", "x-ai": "#b44876",
                  "deepseek": "#537b38", "mistralai": "#b18a24", "qwen": "#526099"}
 VENDOR_NAMES = {"anthropic": "Anthropic", "google": "Google", "openai": "OpenAI",
-                "meta": "Meta", "meta-llama": "Meta", "x-ai": "xAI"}
+                "meta": "Meta", "meta-llama": "Meta", "x-ai": "xAI", "qwen": "Qwen"}
+MODEL_NAMES = {
+    "claude-haiku-5.5": "Haiku 5.5",
+    "claude-sonnet-5.5": "Sonnet 5.5",
+    "claude-opus-5.5": "Opus 5.5",
+    "claude-fable-5.1": "Fable 5.1",
+    "gemini-3.5-flash-lite": "Gemini 3.5 Flash Lite",
+    "gemini-3.8-flash": "Gemini 3.8 Flash",
+    "gemini-4-argon": "Gemini 4 Argon",
+    "muse-spark-1.3": "Muse Spark 1.3",
+    "muse-wonder": "Muse Wonder",
+    "gpt-6-luna": "GPT-6 Luna",
+    "gpt-6.1-sol": "GPT-6.1 Sol",
+    "gpt-6-astra": "GPT-6 Astra",
+    "qwen3.8-max-0902": "Qwen3.8 Max (0902)",
+    "grok-4.6": "Grok 4.6",
+}
 
 
 def model_styles(models):
@@ -221,7 +237,8 @@ def plot_results(run_dir, rows, *, aspect_ratio=None, size=None):
                    marker=marker, edgecolor=color, linewidth=1.5, zorder=3)
         if p is not label_points[p["model"]]:
             continue
-        label = p["model"].split("/")[-1].removeprefix("claude-").replace("-", " ")
+        model_name = p["model"].split("/")[-1]
+        label = MODEL_NAMES.get(model_name, model_name.removeprefix("claude-").replace("-", " "))
         annotations.append(ax.annotate(label, (x, y), xytext=(0, 20),
                     textcoords="offset points", ha="center", fontsize=9, color=ink,
                     bbox=dict(boxstyle="round,pad=.15", fc=background, ec="none", alpha=.94),
