@@ -1,0 +1,3 @@
+# Excerpt from a conversation
+
+**SPEAKER:** Winning is not the ruler's objective. He wants the familiar pattern back: raids during summer, followed by winter ceasefires. That pattern rests on the assumptions of the Ford Treaty, which still constrain our leaders. Successive governing factions have all preserved those assumptions, even factions professing opposition. Ending their hold would mean replacing the entire political establishment. Those in office value remaining there above any other consideration. The ruler's denunciations of the Treaty are therefore performances intended to please his audience. What he actually does remains the same; his words offer no departure from the policies he continues to pursue.

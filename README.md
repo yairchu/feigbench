@@ -24,6 +24,17 @@ This is for a video in Yair's political video series. Any quote shown publicly m
 | `S4_tactics_vs_strategy` | Excerpt: field heroism vs. strategic defeat, rejecting the buffer zone. |
 | `S5_no_treaty_no_expulsion` | H without the calamity, the Treaty and the expulsion. |
 | `S6_leadership_only_control` | Control: generic populist criticism of a ruling class. Should not point to anyone. |
+| `S1_…_paraphrased`–`S6_…_paraphrased` | Matched rewrites of S1–S6: different wording and sentence structure, similar lengths, same claims, fictional setting, argument order, and speaker/interviewer format. |
+
+The paraphrases test whether recognition survives changes in wording. They preserve the severity and certainty of the positions, avoid adding real-world names or political labels, and deliberately keep the original fictional references (including the Ford Treaty). S5 reuses the matching rewritten passages from S1 and S4 so comparisons between excerpts remain consistent. These are model-written experimental stimuli, not quotations or independent source material.
+
+Run the originals and paraphrases together with identical model/effort settings:
+
+```bash
+uv run run_bench.py --texts 'S*' --efforts medium --runs 3
+```
+
+`S*` now selects 12 texts: six originals and six paraphrases. Compare each original with its `_paraphrased` partner in `summary.csv`, especially `mean_target_conf`, `mean_context_conf`, and `soft_score`. The per-model scatter averages both versions together; it does not measure the paraphrase effect separately. Both versions of S6 are excluded from that average and retained in the per-text summaries as controls. A drop after rewriting would show sensitivity to wording; it would not by itself distinguish conversational style from recognition of a particular passage. Use multiple runs before interpreting a difference.
 
 `results/manual_chatgpt_runs_and_key_he.md` (Hebrew) has the full substitution key and the manual ChatGPT results.
 
@@ -103,7 +114,7 @@ Effort is saved in the run configuration, raw records, and every summary. The ch
 During explicit effort sweeps, models whose advertised `supported_parameters` omit `temperature` use their provider's temperature default. The runner prints this and records `effective_temperatures` in `config.json` (`null` means omitted). Sending temperature to these models with strict parameter routing would reject every endpoint even when reasoning effort is supported. To smoke-test routing before a full sweep, run one text and one effort level first:
 
 ```bash
-uv run run_bench.py --models anthropic/claude-haiku-5.5,openai/gpt-6-luna --texts 'S1_*' --efforts low --runs 1
+uv run run_bench.py --models anthropic/claude-haiku-5.5,openai/gpt-6-luna --texts S1_burned_cities --efforts low --runs 1
 ```
 
 ## Next steps

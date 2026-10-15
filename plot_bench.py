@@ -18,7 +18,7 @@ def model_summary(rows):
     """
     groups = defaultdict(lambda: defaultdict(list))
     for row in rows:
-        if row["text"] != CONTROL:
+        if row["text"].removesuffix("_paraphrased") != CONTROL:
             groups[(row["model"], row.get("effort", "default"))][row["text"]].append(row)
     result = []
     for (model, effort), texts in sorted(groups.items()):
@@ -88,7 +88,7 @@ def plot_results(run_dir, rows):
     series = defaultdict(list)
     cohorts = defaultdict(set)
     for row in rows:
-        if row["text"] != CONTROL:
+        if row["text"].removesuffix("_paraphrased") != CONTROL:
             cohorts[(row["model"], row.get("effort", "default"))].add((row["text"], row["run"]))
     for p in points:
         if p["effort"] in EFFORT_ORDER:

@@ -1,0 +1,5 @@
+# Excerpt from a conversation
+
+**SPEAKER:** The conduct of our warriors and the direction given by our leaders must be judged separately. On the battlefield, our men show courage, prevail, and kill thousands of their opponents; I welcome those deaths. Yet those running the campaign are pursuing a course that will ultimately squander these successes and bring defeat. The clans may turn their devastated camps into an emblem of defiance. Our children would then descend through the passes to wage another campaign for the very same pastures.
+
+There is a proposal to keep watchtowers beside the river once fighting ends, allowing our riders to enter whenever they choose. I oppose it. Earlier attempts of this kind ended badly: constant losses among our warriors would prompt villagers in the mountains to demand their return, until we withdrew from the towers as well. Commit all our force to settling the war swiftly, then address what follows. Whoever leads us must either do that or relinquish office.

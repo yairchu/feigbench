@@ -1,0 +1,3 @@
+# Excerpt from a conversation
+
+**SPEAKER:** Our governing class remains captive to inherited assumptions. Successive factions in office have all upheld them, even factions professing opposition. Escaping them would mean replacing the entire political establishment, whose overriding concern is to retain its position. The ruler's denunciations are performances intended to please his audience, while the policies he pursues remain unchanged. What we need is a different set of leaders, unburdened by those inherited assumptions, to take the realm in a fresh direction guided by the aspirations of our own people.

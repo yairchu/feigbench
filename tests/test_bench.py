@@ -80,7 +80,7 @@ class BenchTest(unittest.TestCase):
 
     def test_end_to_end(self):
         models = ",".join(SCRIPT)
-        rows, summary = self.run_bench("--texts", "S1_*", "--runs", "1", "--models", models)
+        rows, summary = self.run_bench("--texts", "S1_burned_cities", "--runs", "1", "--models", models)
 
         r = rows["mock/clean"]
         self.assertEqual((r["target_rank"], r["target_conf"], r["context_match"]), ("1", "60.0", "True"))
@@ -194,7 +194,8 @@ class SoftScoreTest(unittest.TestCase):
         from plot_bench import model_summary
         row = self.score(CLEAN)
         rows = [row, row, {**row, "text": "B_no_biography", "soft_score": 0, "cost_usd": .004},
-                {**row, "text": "S6_leadership_only_control", "soft_score": 100, "cost_usd": 1}]
+                {**row, "text": "S6_leadership_only_control", "soft_score": 100, "cost_usd": 1},
+                {**row, "text": "S6_leadership_only_control_paraphrased", "soft_score": 100, "cost_usd": 1}]
         point, = model_summary(rows)
         self.assertEqual((point["texts"], point["calls"], point["soft_score"]), (2, 3, 35))
         self.assertEqual(point["mean_cost_usd"], .003)
@@ -235,7 +236,7 @@ class EffortTest(unittest.TestCase):
              mock.patch.object(run_bench, "call", return_value=reply) as call, \
              mock.patch.object(run_bench, "validate_efforts", return_value={}), \
              mock.patch.dict(os.environ, {"OPENROUTER_API_KEY": "test"}), \
-             mock.patch.object(sys, "argv", ["run_bench.py", "--models", "m", "--texts", "S1_*",
+             mock.patch.object(sys, "argv", ["run_bench.py", "--models", "m", "--texts", "S1_burned_cities",
                                              "--runs", "1", "--efforts", "low", "mid", "high", "low",
                                              "--results-dir", directory]), \
              mock.patch("sys.stdout", new=io.StringIO()), \
@@ -259,7 +260,7 @@ class EffortTest(unittest.TestCase):
              mock.patch.object(run_bench, "call", return_value={"error": "test"}) as call, \
              mock.patch.object(run_bench, "validate_efforts", return_value={"m": {"supported_parameters": ["reasoning", "max_tokens"]}}), \
              mock.patch.dict(os.environ, {"OPENROUTER_API_KEY": "test"}), \
-             mock.patch.object(sys, "argv", ["run_bench.py", "--models", "m", "--texts", "S1_*", "--runs", "1",
+             mock.patch.object(sys, "argv", ["run_bench.py", "--models", "m", "--texts", "S1_burned_cities", "--runs", "1",
                                              "--efforts", "low", "--results-dir", directory]), \
              mock.patch("sys.stdout", new=io.StringIO()), mock.patch("plot_bench.plot_results"):
             run_bench.main()
