@@ -87,6 +87,7 @@ uv run run_bench.py --efforts low medium high --runs 1 --dry-run # preview an ef
 uv run run_bench.py --efforts low medium high --runs 1 # run all three settings
 uv run run_bench.py --summarize results/<dir> # re-score an existing run
 uv run plot_bench.py results/<dir>           # regenerate just the cost/score chart
+uv run speaker_report.py results/<dir>       # non-Israeli highest-confidence speaker guesses
 uv run python -m unittest discover tests             # offline tests, no key or network needed
 ```
 
@@ -102,10 +103,13 @@ Each run writes to `results/<timestamp>/`:
 - `scored.csv`: one row per call (target's rank and confidence, top-1 speaker, top context, whether the context matches)
 - `summary.csv` / `summary.md`: per text × model (target top-1 rate, in-top-5 rate, mean confidence, context-match rate, errors, the top-1 names given)
 - `control_summary.csv`: S6 results only, with speaker and context confidence; these are recognition diagnostics, not positive-task scores (lower confidence is expected)
+- `non_israeli_speakers.md` / `.csv`: reviewed non-Israeli first-choice guesses, with counts, normalized confidence, models, and excerpts; S6 is reported separately
+- `speaker_first_choices.csv` / `unclassified_speakers.csv`: per-call speaker details and guesses needing identity review
+- `speaker_report_catalog.json`: exact reviewed identity/alias catalog used to generate the speaker report
 - `model_summary.csv`: per model × effort soft score, confidence components, and recorded dollar costs, excluding S6
 - `cost_score.png` / `cost_score.svg`: cost-versus-score scatter plot, generated automatically when complete costs are available
 - `snapshot.json`: exact text contents, prompt, scoring targets, control names, scoring version, API base URL, Python version, Git commit/dirty status, and saved-source hashes
-- `code/`: copies of the runner, plotter, README, dependency manifest, and lockfile used for this run
+- `code/`: copies of the runner, plotter, speaker report and identity catalog, README, dependency manifest, and lockfile used for this run
 - `scoring.json`: scoring version and exact targets used for the latest summary, including whether targets came from a snapshot or the current workspace
 
 The **soft score**, version `soft-confidence-v2`, is `(speaker confidence + context confidence) / 2`, on a 0–100 scale. Each candidate list is normalized independently: first bound individual confidences to 0–100 (missing or non-finite values become zero), then multiply every confidence by `100 / max(100, list total)`. A list totaling 125% is scaled down; a list totaling 80% stays unchanged, leaving 20% for unlisted possibilities. This is reweighting, not an additional penalty. Normalization happens before selecting the target speaker or summing matching contexts. The scored CSV records pre-normalization totals, and summaries count how many lists needed normalization.
@@ -115,6 +119,8 @@ Speaker confidence is the normalized confidence assigned to the target speaker w
 The plotted score averages runs within each text, then averages texts equally. `S6_leadership_only_control` stays in the per-text summaries but is excluded from the chart because it is a negative control. The dollar axis uses recorded `usage.cost`, averaged with the same text weighting. Missing costs stay unknown and models with incomplete costs are omitted from the chart. Zero-cost models use a linear dollar axis; otherwise it is logarithmic. Scores use models' self-reported confidence, so confidence calibration can affect comparisons.
 
 Charts use a shared color for each vendor and circle markers throughout, with one label per model. Marker size indicates effort, and the lowest effort is hollow when multiple levels are present. Solid lines connect effort levels within a model. Faint dashed links connect same-vendor models only at medium effort, ordered by measured cost; these links only appear for matching evaluation cohorts. The legend explains vendors, connections, and effort markers. Labels are positioned to reduce overlaps in crowded regions.
+
+The non-Israeli speaker report uses the highest-confidence candidate in each reply (ties follow list order), matching the scorer's ranking. It counts calls across efforts and repetitions, rather than unique models. `speaker_origins.json` supplies reviewed identities, aliases, background labels, and source links; it currently covers the named first choices in the eight-model exploratory run. Background labels describe national association, not exhaustive citizenship. Unknown or unreviewed names are left unclassified and listed separately, so the report never assumes an unfamiliar name is non-Israeli. S6 counts appear separately because its generic content is expected to elicit guesses from many countries. The table records model guesses, not claims that those people actually said the excerpt.
 
 New runs freeze their inputs and targets in `snapshot.json` before making API calls. Re-summarizing or plotting uses those saved targets, even after workspace edits. `scoring.json`, scored rows, summaries, and charts identify the scoring version. If the saved version differs from the current scorer, use the saved runner rather than silently changing the metric:
 

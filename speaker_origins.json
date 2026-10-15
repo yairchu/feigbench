@@ -1,0 +1,383 @@
+{
+  "description": "Reviewed identities for highest-confidence speaker guesses. Background labels describe national association, not an exhaustive citizenship register. Unlisted identities remain unclassified; no nationality is inferred from names.",
+  "entries": [
+    {
+      "name": "Noam Chomsky",
+      "classification": "non_israeli",
+      "background": "American",
+      "aliases": [],
+      "source": "https://en.wikipedia.org/wiki/Noam_Chomsky"
+    },
+    {
+      "name": "Imran Khan",
+      "classification": "non_israeli",
+      "background": "Pakistani",
+      "aliases": [],
+      "source": "https://en.wikipedia.org/wiki/Imran_Khan"
+    },
+    {
+      "name": "Stanley McChrystal",
+      "classification": "non_israeli",
+      "background": "American",
+      "aliases": [],
+      "source": "https://www.ausa.org/people/general-stanley-mcchrystal-usa-ret"
+    },
+    {
+      "name": "Aleksey Yermolov",
+      "classification": "non_israeli",
+      "background": "Russian",
+      "aliases": [],
+      "source": "https://en.wikipedia.org/wiki/Aleksey_Yermolov"
+    },
+    {
+      "name": "Curtis LeMay",
+      "classification": "non_israeli",
+      "background": "American",
+      "aliases": [],
+      "source": "https://www.af.mil/About-Us/Biographies/Display/Article/106462/general-curtis-emerson-lemay/"
+    },
+    {
+      "name": "Donald Trump",
+      "classification": "non_israeli",
+      "background": "American",
+      "aliases": [],
+      "source": "https://en.wikipedia.org/wiki/Donald_Trump"
+    },
+    {
+      "name": "Alexei Navalny",
+      "classification": "non_israeli",
+      "background": "Russian",
+      "aliases": [],
+      "source": "https://en.wikipedia.org/wiki/Alexei_Navalny"
+    },
+    {
+      "name": "Edward Said",
+      "classification": "non_israeli",
+      "background": "Palestinian-American",
+      "aliases": [],
+      "source": "https://en.wikipedia.org/wiki/Edward_Said"
+    },
+    {
+      "name": "Nigel Farage",
+      "classification": "non_israeli",
+      "background": "British",
+      "aliases": [],
+      "source": "https://en.wikipedia.org/wiki/Nigel_Farage"
+    },
+    {
+      "name": "Alexander Dugin",
+      "classification": "non_israeli",
+      "background": "Russian",
+      "aliases": [
+        "Aleksandr Dugin"
+      ],
+      "source": "https://en.wikipedia.org/wiki/Aleksandr_Dugin"
+    },
+    {
+      "name": "Ann Coulter",
+      "classification": "non_israeli",
+      "background": "American",
+      "aliases": [],
+      "source": "https://en.wikipedia.org/wiki/Ann_Coulter"
+    },
+    {
+      "name": "Ramzan Kadyrov",
+      "classification": "non_israeli",
+      "background": "Russian / Chechen",
+      "aliases": [],
+      "source": "https://en.wikipedia.org/wiki/Ramzan_Kadyrov"
+    },
+    {
+      "name": "Gulbuddin Hekmatyar",
+      "classification": "non_israeli",
+      "background": "Afghan",
+      "aliases": [],
+      "source": "https://en.wikipedia.org/wiki/Gulbuddin_Hekmatyar"
+    },
+    {
+      "name": "Lindsey Graham",
+      "classification": "non_israeli",
+      "background": "American",
+      "aliases": [],
+      "source": "https://en.wikipedia.org/wiki/Lindsey_Graham"
+    },
+    {
+      "name": "Oleksiy Arestovych",
+      "classification": "non_israeli",
+      "background": "Ukrainian",
+      "aliases": [],
+      "source": "https://en.wikipedia.org/wiki/Oleksiy_Arestovych"
+    },
+    {
+      "name": "Tariq Ali",
+      "classification": "non_israeli",
+      "background": "British-Pakistani",
+      "aliases": [],
+      "source": "https://southasianbritain.org/people/tariq-ali/"
+    },
+    {
+      "name": "Gotabaya Rajapaksa",
+      "classification": "non_israeli",
+      "background": "Sri Lankan",
+      "aliases": [],
+      "source": "https://en.wikipedia.org/wiki/Gotabaya_Rajapaksa"
+    },
+    {
+      "name": "Igor Girkin (Strelkov)",
+      "classification": "non_israeli",
+      "background": "Russian",
+      "aliases": [
+        "Igor Girkin",
+        "Igor Strelkov (Girkin)",
+        "Igor Strelkov (Igor Girkin)"
+      ],
+      "source": "https://en.wikipedia.org/wiki/Igor_Girkin"
+    },
+    {
+      "name": "Selahattin Demirtaş",
+      "classification": "non_israeli",
+      "background": "Turkish / Kurdish",
+      "aliases": [],
+      "source": "https://en.wikipedia.org/wiki/Selahattin_Demirta%C5%9F"
+    },
+    {
+      "name": "Vivek Ramaswamy",
+      "classification": "non_israeli",
+      "background": "American",
+      "aliases": [],
+      "source": "https://en.wikipedia.org/wiki/Vivek_Ramaswamy"
+    },
+    {
+      "name": "Stephen Walt",
+      "classification": "non_israeli",
+      "background": "American",
+      "aliases": [],
+      "source": "https://en.wikipedia.org/wiki/Stephen_Walt"
+    },
+    {
+      "name": "Malalai Joya",
+      "classification": "non_israeli",
+      "background": "Afghan",
+      "aliases": [],
+      "source": "https://en.wikipedia.org/wiki/Malalai_Joya"
+    },
+    {
+      "name": "Gerald Templer",
+      "classification": "non_israeli",
+      "background": "British",
+      "aliases": [
+        "General Gerald Templer"
+      ],
+      "source": "https://en.wikipedia.org/wiki/Gerald_Templer"
+    },
+    {
+      "name": "Musa Hilal",
+      "classification": "non_israeli",
+      "background": "Sudanese",
+      "aliases": [],
+      "source": "https://sudantribune.com/article/25730"
+    },
+    {
+      "name": "Ahmed Rashid",
+      "classification": "non_israeli",
+      "background": "Pakistani",
+      "aliases": [],
+      "source": "https://en.wikipedia.org/wiki/Ahmed_Rashid"
+    },
+    {
+      "name": "Ahmad Shah Massoud",
+      "classification": "non_israeli",
+      "background": "Afghan",
+      "aliases": [],
+      "source": "https://en.wikipedia.org/wiki/Ahmad_Shah_Massoud"
+    },
+    {
+      "name": "William Westmoreland",
+      "classification": "non_israeli",
+      "background": "American",
+      "aliases": [
+        "General William Westmoreland"
+      ],
+      "source": "https://en.wikipedia.org/wiki/William_Westmoreland"
+    },
+    {
+      "name": "Colin Powell",
+      "classification": "non_israeli",
+      "background": "American",
+      "aliases": [],
+      "source": "https://en.wikipedia.org/wiki/Colin_Powell"
+    },
+    {
+      "name": "Khaled Mashal",
+      "classification": "non_israeli",
+      "background": "Palestinian",
+      "aliases": [
+        "Khaled Meshaal"
+      ],
+      "source": "https://en.wikipedia.org/wiki/Khaled_Mashal"
+    },
+    {
+      "name": "Edward Luttwak",
+      "classification": "non_israeli",
+      "background": "American (Romanian-born)",
+      "aliases": [],
+      "source": "https://en.wikipedia.org/wiki/Edward_Luttwak"
+    },
+    {
+      "name": "Aleksandr Solzhenitsyn",
+      "classification": "non_israeli",
+      "background": "Russian",
+      "aliases": [],
+      "source": "https://en.wikipedia.org/wiki/Aleksandr_Solzhenitsyn"
+    },
+    {
+      "name": "Mohsen Sazegara",
+      "classification": "non_israeli",
+      "background": "Iranian",
+      "aliases": [],
+      "source": "https://en.wikipedia.org/wiki/Mohsen_Sazegara"
+    },
+    {
+      "name": "Shirin Ebadi",
+      "classification": "non_israeli",
+      "background": "Iranian",
+      "aliases": [],
+      "source": "https://en.wikipedia.org/wiki/Shirin_Ebadi"
+    },
+    {
+      "name": "Patrick Buchanan",
+      "classification": "non_israeli",
+      "background": "American",
+      "aliases": [
+        "Patrick J. Buchanan"
+      ],
+      "source": "https://en.wikipedia.org/wiki/Pat_Buchanan"
+    },
+    {
+      "name": "Moshe Feiglin",
+      "classification": "israeli",
+      "background": "Israeli",
+      "aliases": []
+    },
+    {
+      "name": "Avigdor Lieberman",
+      "classification": "israeli",
+      "background": "Israeli",
+      "aliases": [
+        "Avigdor Liberman"
+      ]
+    },
+    {
+      "name": "Itamar Ben-Gvir",
+      "classification": "israeli",
+      "background": "Israeli",
+      "aliases": []
+    },
+    {
+      "name": "Bezalel Smotrich",
+      "classification": "israeli",
+      "background": "Israeli",
+      "aliases": []
+    },
+    {
+      "name": "Ariel Sharon",
+      "classification": "israeli",
+      "background": "Israeli",
+      "aliases": []
+    },
+    {
+      "name": "Daniella Weiss",
+      "classification": "israeli",
+      "background": "Israeli",
+      "aliases": [
+        "Daniela Weiss"
+      ]
+    },
+    {
+      "name": "Benjamin Netanyahu",
+      "classification": "israeli",
+      "background": "Israeli",
+      "aliases": []
+    },
+    {
+      "name": "Benny Morris",
+      "classification": "israeli",
+      "background": "Israeli",
+      "aliases": []
+    },
+    {
+      "name": "Gideon Levy",
+      "classification": "israeli",
+      "background": "Israeli",
+      "aliases": []
+    },
+    {
+      "name": "Gadi Eisenkot",
+      "classification": "israeli",
+      "background": "Israeli",
+      "aliases": []
+    },
+    {
+      "name": "Yigal Allon",
+      "classification": "israeli",
+      "background": "Israeli",
+      "aliases": []
+    },
+    {
+      "name": "Meir Kahane",
+      "classification": "israeli",
+      "background": "Israeli",
+      "aliases": []
+    },
+    {
+      "name": "Giora Eiland",
+      "classification": "israeli",
+      "background": "Israeli",
+      "aliases": []
+    },
+    {
+      "name": "Ehud Barak",
+      "classification": "israeli",
+      "background": "Israeli",
+      "aliases": []
+    },
+    {
+      "name": "Caroline Glick",
+      "classification": "israeli",
+      "background": "Israeli",
+      "aliases": []
+    },
+    {
+      "name": "Rehavam Ze'evi",
+      "classification": "israeli",
+      "background": "Israeli",
+      "aliases": [
+        "Rehavam Zeevi"
+      ]
+    },
+    {
+      "name": "Benny Gantz",
+      "classification": "israeli",
+      "background": "Israeli",
+      "aliases": []
+    },
+    {
+      "name": "Ehud Olmert",
+      "classification": "israeli",
+      "background": "Israeli",
+      "aliases": []
+    },
+    {
+      "name": "Yitzhak Laor",
+      "classification": "israeli",
+      "background": "Israeli",
+      "aliases": []
+    },
+    {
+      "name": "Daniel Levy",
+      "classification": "israeli",
+      "background": "Israeli",
+      "aliases": []
+    }
+  ]
+}

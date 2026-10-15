@@ -39,7 +39,7 @@ def snapshot_run(run_dir, texts, prompt, targets):
     sources = directory / "code"
     sources.mkdir()
     hashes = {}
-    for name in ("run_bench.py", "plot_bench.py", "pyproject.toml", "uv.lock", "README.md"):
+    for name in ("run_bench.py", "plot_bench.py", "speaker_report.py", "speaker_origins.json", "pyproject.toml", "uv.lock", "README.md"):
         source = Path(ROOT) / name
         shutil.copyfile(source, sources / name)
         hashes[name] = hashlib.sha256(source.read_bytes()).hexdigest()
@@ -353,6 +353,8 @@ def summarize(run_dir):
     print("\n".join(md))
     from plot_bench import plot_results
     plot_results(run_dir, rows)
+    from speaker_report import write_report
+    write_report(run_dir, records)
 
 
 def main():
