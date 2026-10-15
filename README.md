@@ -28,7 +28,7 @@ This is for a video in Yair's political video series. Any quote shown publicly m
 
 The paraphrases test whether recognition survives changes in wording. They preserve the severity and certainty of the positions, avoid adding real-world names or political labels, and deliberately keep the original fictional references (including the Ford Treaty). S5 reuses the matching rewritten passages from S1 and S4 so comparisons between excerpts remain consistent. These are model-written experimental stimuli, not quotations or independent source material.
 
-Default runs use the rewritten S1–S6 excerpts in place of their originals, alongside A–H. `--texts 'S*'` selects only the six rewritten excerpts. Originals remain available by exact name, or through `--include-originals` for a paired comparison:
+Default runs use only rewritten S1–S5 as the scored set, plus rewritten S6 as a separately reported negative control. `--texts 'S*'` selects the same six rewritten excerpts. A–H remain available by explicit selection (for example `--texts '[A-H]*'`); `--texts '*'` combines them with the rewritten excerpts. Originals remain available by exact name, or through `--include-originals` for a paired comparison:
 
 ```bash
 uv run run_bench.py --texts 'S*' --include-originals --efforts medium --runs 3
@@ -80,7 +80,8 @@ uv run run_bench.py --list-models openai anthropic google x-ai deepseek   # pick
 uv run run_bench.py --list-efforts gemini gpt claude # inspect supported reasoning levels
 # put the chosen ids in models.txt
 uv run run_bench.py --dry-run                 # shows how many calls
-uv run run_bench.py --runs 3                  # everything
+uv run run_bench.py --runs 3                  # rewritten excerpts + control
+uv run run_bench.py --texts '[A-H]*' --runs 3 # optional longer diagnostic texts
 uv run run_bench.py --texts 'S*' --runs 5     # only the excerpts
 uv run run_bench.py --efforts low medium high --runs 1 --dry-run # preview an effort sweep
 uv run run_bench.py --efforts low medium high --runs 1 # run all three settings
@@ -100,12 +101,26 @@ Each run writes to `results/<timestamp>/`:
 - `raw.jsonl`: every reply, verbatim
 - `scored.csv`: one row per call (target's rank and confidence, top-1 speaker, top context, whether the context matches)
 - `summary.csv` / `summary.md`: per text × model (target top-1 rate, in-top-5 rate, mean confidence, context-match rate, errors, the top-1 names given)
+- `control_summary.csv`: S6 results only, with speaker and context confidence; these are recognition diagnostics, not positive-task scores (lower confidence is expected)
 - `model_summary.csv`: per model × effort soft score, confidence components, and recorded dollar costs, excluding S6
 - `cost_score.png` / `cost_score.svg`: cost-versus-score scatter plot, generated automatically when complete costs are available
+- `snapshot.json`: exact text contents, prompt, scoring targets, control names, scoring version, API base URL, Python version, Git commit/dirty status, and saved-source hashes
+- `code/`: copies of the runner, plotter, README, dependency manifest, and lockfile used for this run
+- `scoring.json`: scoring version and exact targets used for the latest summary, including whether targets came from a snapshot or the current workspace
 
-The **soft score** is `(speaker confidence + context confidence) / 2`, on a 0–100 scale. Speaker confidence is the confidence assigned to the target speaker wherever they appear in the candidate list (zero if absent). Context confidence sums all matching context guesses, capped at 100%. Matches use `targets.json`; by default Israel, Gaza, and Palestine count as the Israeli context. Individual confidences are bounded to 0–100; missing or non-finite values contribute zero. Unparseable answers receive zero soft score.
+The **soft score**, version `soft-confidence-v2`, is `(speaker confidence + context confidence) / 2`, on a 0–100 scale. Each candidate list is normalized independently: first bound individual confidences to 0–100 (missing or non-finite values become zero), then multiply every confidence by `100 / max(100, list total)`. A list totaling 125% is scaled down; a list totaling 80% stays unchanged, leaving 20% for unlisted possibilities. This is reweighting, not an additional penalty. Normalization happens before selecting the target speaker or summing matching contexts. The scored CSV records pre-normalization totals, and summaries count how many lists needed normalization.
+
+Speaker confidence is the normalized confidence assigned to the target speaker wherever they appear in the candidate list (zero if absent). Context confidence sums normalized probabilities of all matching contexts. Matches use the run's saved targets; by default Israel, Gaza, and Palestine count as the Israeli context. Unparseable answers receive zero soft score. The prompt asks for up to three contexts and five speakers, permits empty lists, and requires each list to total at most 100%; remaining probability represents unknown or other possibilities.
 
 The plotted score averages runs within each text, then averages texts equally. `S6_leadership_only_control` stays in the per-text summaries but is excluded from the chart because it is a negative control. The dollar axis uses recorded `usage.cost`, averaged with the same text weighting. Missing costs stay unknown and models with incomplete costs are omitted from the chart. Zero-cost models use a linear dollar axis; otherwise it is logarithmic. Scores use models' self-reported confidence, so confidence calibration can affect comparisons.
+
+New runs freeze their inputs and targets in `snapshot.json` before making API calls. Re-summarizing or plotting uses those saved targets, even after workspace edits. `scoring.json`, scored rows, summaries, and charts identify the scoring version. If the saved version differs from the current scorer, use the saved runner rather than silently changing the metric:
+
+```bash
+uv run --project results/<dir>/code python results/<dir>/code/run_bench.py --summarize results/<dir>
+```
+
+The saved code and lockfile preserve the local scoring implementation and dependency versions; API model aliases and stochastic outputs can still change, so this does not promise identical future model replies. Returned model and generation IDs are recorded when available. Old exploratory runs can be rescored with v2 using their preserved replies, but their original text/target snapshots cannot be recovered reliably. They are explicitly marked as legacy runs using current workspace targets; no historical input snapshot is fabricated. Changing the prompt affects only new calls, not rescoring old replies.
 
 OpenRouter supports [reasoning effort settings](https://openrouter.ai/docs/guides/best-practices/reasoning-tokens) through a request such as `"reasoning": {"effort": "high"}`. Use `--efforts low medium high` to run each model at each requested setting (`mid` is accepted as an alias for `medium`). Other gateway levels are `none`, `minimal`, `xhigh`, and `max`; supported levels vary by model. `--list-efforts FILTER...` reads the model catalog's advertised levels and defaults. Before a live sweep, the runner checks model metadata and rejects known unsupported settings; it also requests providers that support the reasoning parameter. A dry run previews the call count offline and does not validate support.
 
@@ -119,7 +134,7 @@ uv run run_bench.py --models anthropic/claude-haiku-5.5,openai/gpt-6-luna --text
 
 ## Next steps
 
-1. **Run A–H and S1–S6** across 4–6 models, 3 runs each.
+1. **Run the rewritten excerpts** across 4–6 models, 3 runs each; use A–H as optional diagnostics.
 2. **Control speakers.** Disguise a comparable interview by Daniella Weiss, Smotrich or Ben-Gvir the same way, to check that "Feiglin" is a real identification and not the default answer for this camp. Score with the matching name by adding an entry to `targets.json`.
 3. **Control conflict.** A text with the same structure from a different conflict (e.g. a Russian nationalist on Ukraine), to check the base rate of guessing "Israel".
 4. **Minimal excerpt.** Find the shortest passage that still gets Feiglin.

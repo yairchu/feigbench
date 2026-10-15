@@ -6,8 +6,8 @@ import json
 import math
 from collections import defaultdict
 from pathlib import Path
+from run_bench import SCORING_VERSION, is_control
 
-CONTROL = "S6_leadership_only_control"
 EFFORT_ORDER = ("none", "minimal", "low", "medium", "high", "xhigh", "max")
 
 
@@ -18,7 +18,7 @@ def model_summary(rows):
     """
     groups = defaultdict(lambda: defaultdict(list))
     for row in rows:
-        if row["text"].removesuffix("_paraphrased") != CONTROL:
+        if not is_control(row["text"]):
             groups[(row["model"], row.get("effort", "default"))][row["text"]].append(row)
     result = []
     for (model, effort), texts in sorted(groups.items()):
@@ -27,7 +27,8 @@ def model_summary(rows):
         known = all(isinstance(c, (int, float)) and math.isfinite(c) and c >= 0 for c in costs)
         averages = {key: sum(sum(r[key] for r in rs) / len(rs) for rs in texts.values()) / len(texts)
                     for key in ("soft_score", "speaker_conf", "context_conf")}
-        result.append(dict(model=model, effort=effort, texts=len(texts), calls=len(calls), **averages,
+        result.append(dict(model=model, effort=effort, scoring_version=SCORING_VERSION,
+                           texts=len(texts), calls=len(calls), **averages,
                            mean_cost_usd=sum(sum(r["cost_usd"] for r in rs) / len(rs)
                                              for rs in texts.values()) / len(texts) if known else None,
                            total_cost_usd=sum(costs) if known else None,
@@ -88,7 +89,7 @@ def plot_results(run_dir, rows):
     series = defaultdict(list)
     cohorts = defaultdict(set)
     for row in rows:
-        if row["text"].removesuffix("_paraphrased") != CONTROL:
+        if not is_control(row["text"]):
             cohorts[(row["model"], row.get("effort", "default"))].add((row["text"], row["run"]))
     for p in points:
         if p["effort"] in EFFORT_ORDER:
@@ -133,10 +134,10 @@ def plot_results(run_dir, rows):
               f"{'/'.join(map(str, text_counts))} texts per setting · {'/'.join(map(str, call_counts))} calls per setting")
     fig.text(.10, .115, "SCORE = ½ speaker confidence + ½ matching-context confidence", fontsize=10,
              color=ink, weight="bold")
-    fig.text(.10, .078, "Contexts summed, capped at 100%. Equal weight per text. S6 control excluded.",
+    fig.text(.10, .078, "Candidate lists normalized above 100%. Equal weight per text. S6 control excluded.",
              fontsize=9, color=muted)
     fig.text(.10, .047, counts, fontsize=8, color=muted)
-    fig.text(.10, .018, f"Run {directory.name} · self-reported confidence · recorded API cost", fontsize=8, color=muted)
+    fig.text(.10, .018, f"Run {directory.name} · {SCORING_VERSION} · self-reported confidence · recorded API cost", fontsize=8, color=muted)
     for extension in ("png", "svg"):
         fig.savefig(directory / f"cost_score.{extension}", dpi=180, facecolor=background)
     plt.close(fig)
@@ -147,8 +148,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("run_dir")
     args = parser.parse_args()
-    from run_bench import load_targets, score
-    targets = load_targets()
+    from run_bench import run_targets, score
+    targets, _ = run_targets(args.run_dir)
     records = [json.loads(line) for line in (Path(args.run_dir) / "raw.jsonl").read_text().splitlines() if line.strip()]
     plot_results(args.run_dir, [score(r, targets) for r in records])
 

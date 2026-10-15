@@ -2,7 +2,8 @@
 
   uv run python -m unittest discover tests
 """
-import csv, glob, io, json, os, ssl, sys, tempfile, threading, unittest, urllib.error
+import csv, glob, io, json, os, ssl, subprocess, sys, tempfile, threading, unittest, urllib.error
+from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -110,6 +111,19 @@ class BenchTest(unittest.TestCase):
         self.assertEqual((s1["target_rank"], s1["context_match"]), (2, False))
         self.assertEqual((s2["target_rank"], s2["context_match"]), (1, True))
 
+    def test_default_dataset_and_control_report(self):
+        self.run_bench("--models", "mock/clean", "--runs", "1")
+        directory, = Path(self.tmp.name).glob("2*")
+        saved = json.loads((directory / "snapshot.json").read_text())
+        self.assertEqual(len(saved["texts"]), 6)
+        self.assertTrue(all(t.startswith("S") and t.endswith("_paraphrased") for t in saved["texts"]))
+        self.assertEqual(len(read_csv(directory / "control_summary.csv")), 1)
+        point, = read_csv(directory / "model_summary.csv")
+        self.assertEqual(point["texts"], "5")
+        self.assertEqual(saved["scoring_version"], run_bench.SCORING_VERSION)
+        self.assertEqual(saved["prompt"], json.loads((directory / "config.json").read_text())["prompt"])
+        self.assertTrue((directory / "code" / "run_bench.py").exists())
+
 
 class CertificateTest(unittest.TestCase):
     def setUp(self):
@@ -190,6 +204,17 @@ class SoftScoreTest(unittest.TestCase):
         self.assertEqual(run_bench.probability(float("nan")), 0)
         self.assertEqual(run_bench.probability(-10), 0)
 
+    def test_normalizes_entire_lists_before_matching(self):
+        row = self.score({"speakers": [{"name": "Moshe Feiglin", "confidence": 75},
+                                       {"name": "Someone else", "confidence": 50}],
+                          "context": [{"guess": "Israel", "confidence": 60},
+                                      {"guess": "Gaza", "confidence": 40},
+                                      {"guess": "Ukraine", "confidence": 100}]})
+        self.assertEqual((row["speaker_conf_total"], row["context_conf_total"]), (125, 200))
+        self.assertEqual((row["target_conf"], row["speaker_conf"], row["context_conf"], row["soft_score"]), (60, 60, 50, 55))
+        self.assertEqual(row["target_rank"], 1)
+        self.assertEqual(self.score(CLEAN)["soft_score"], 70)  # partial lists are never scaled up
+
     def test_aggregation_weights_texts_equally_and_excludes_control(self):
         from plot_bench import model_summary
         row = self.score(CLEAN)
@@ -201,6 +226,39 @@ class SoftScoreTest(unittest.TestCase):
         self.assertEqual(point["mean_cost_usd"], .003)
         point, = model_summary([{**row, "cost_usd": None}])
         self.assertIsNone(point["mean_cost_usd"])
+
+
+class SnapshotTest(unittest.TestCase):
+    def test_saved_targets_and_code_survive_workspace_changes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            targets = {"default": {"speaker": ["someone else"], "context": ["ukraine"]}}
+            run_bench.snapshot_run(tmp, {"S1_test": "original input"}, "original prompt", targets)
+            record = dict(text="S1_test", model="m", run=1, content=json.dumps(CLEAN))
+            (directory / "raw.jsonl").write_text(json.dumps(record) + "\n")
+            with mock.patch.object(run_bench, "load_targets", side_effect=AssertionError("workspace targets used")), \
+                 mock.patch("sys.stdout", new=io.StringIO()):
+                run_bench.summarize(tmp)
+            row, = read_csv(directory / "scored.csv")
+            self.assertEqual(float(row["soft_score"]), 0)
+            self.assertEqual(json.loads((directory / "scoring.json").read_text())["targets_source"], "snapshot.json")
+            # The saved scorer works outside the repository and uses saved targets.
+            subprocess.run([sys.executable, str(directory / "code" / "run_bench.py"), "--summarize", tmp],
+                           cwd=tmp, check=True, capture_output=True, text=True)
+            row, = read_csv(directory / "scored.csv")
+            self.assertEqual(float(row["soft_score"]), 0)
+            snapshot = json.loads((directory / "snapshot.json").read_text())
+            snapshot["scoring_version"] = "future-version"
+            (directory / "snapshot.json").write_text(json.dumps(snapshot))
+            with self.assertRaises(ValueError):
+                run_bench.run_targets(tmp)
+
+    def test_legacy_run_does_not_fabricate_an_input_snapshot(self):
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(run_bench, "load_targets", return_value={"saved": False}):
+            targets, source = run_bench.run_targets(tmp)
+            self.assertEqual(targets, {"saved": False})
+            self.assertIn("legacy", source)
+            self.assertFalse((Path(tmp) / "snapshot.json").exists())
 
 
 class EffortTest(unittest.TestCase):

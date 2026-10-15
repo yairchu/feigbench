@@ -8,14 +8,15 @@ Usage:
   export OPENROUTER_API_KEY=sk-or-...
   uv run run_bench.py --list-models gpt claude gemini   # find model ids
   uv run run_bench.py --dry-run                        # show the plan, no API calls
-  uv run run_bench.py --runs 3                         # run everything
+  uv run run_bench.py --runs 3                         # rewritten excerpts + control
   uv run run_bench.py --texts 'S*' --models openai/gpt-4o --runs 5
   uv run run_bench.py --summarize results/<run_dir>     # re-score an existing run
 
 The expected speaker and context for each text are in targets.json.
 Set OPENROUTER_BASE_URL to use another OpenAI-compatible endpoint.
 """
-import argparse, csv, datetime, fnmatch, glob, json, math, os, re, ssl, sys, time, urllib.error, urllib.request
+import argparse, csv, datetime, fnmatch, glob, hashlib, json, math, os, re, shutil, ssl, subprocess, sys, time, urllib.error, urllib.request
+from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import certifi
 
@@ -23,6 +24,45 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 API = os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
 TARGETS_FILE = os.path.join(ROOT, "targets.json")
 EFFORTS = ("default", "none", "minimal", "low", "medium", "high", "xhigh", "max")
+SCORING_VERSION = "soft-confidence-v2"
+DEFAULT_TEXTS = "S*_paraphrased"
+CONTROL = "S6_leadership_only_control"
+
+
+def is_control(text):
+    return text.removesuffix("_paraphrased") == CONTROL
+
+
+def snapshot_run(run_dir, texts, prompt, targets):
+    """Save exact inputs and runnable scoring sources, without environment secrets."""
+    directory = Path(run_dir)
+    sources = directory / "code"
+    sources.mkdir()
+    hashes = {}
+    for name in ("run_bench.py", "plot_bench.py", "pyproject.toml", "uv.lock", "README.md"):
+        source = Path(ROOT) / name
+        shutil.copyfile(source, sources / name)
+        hashes[name] = hashlib.sha256(source.read_bytes()).hexdigest()
+    try:
+        commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True, stderr=subprocess.DEVNULL).strip()
+        dirty = bool(subprocess.check_output(["git", "diff", "HEAD", "--", *hashes], cwd=ROOT, stderr=subprocess.DEVNULL))
+    except (OSError, subprocess.CalledProcessError):
+        commit, dirty = None, None
+    snapshot = dict(texts=texts, prompt=prompt, targets=targets, scoring_version=SCORING_VERSION,
+                    controls=[t for t in texts if is_control(t)], code_commit=commit,
+                    code_dirty=dirty, source_sha256=hashes, python_version=sys.version,
+                    api_base_url=API)
+    (directory / "snapshot.json").write_text(json.dumps(snapshot, indent=2, ensure_ascii=False) + "\n")
+
+
+def run_targets(run_dir):
+    snapshot = Path(run_dir) / "snapshot.json"
+    if snapshot.exists():
+        saved = json.loads(snapshot.read_text())
+        if saved["scoring_version"] != SCORING_VERSION:
+            raise ValueError(f"Run uses {saved['scoring_version']}; use its saved code/run_bench.py to summarize it.")
+        return saved["targets"], "snapshot.json"
+    return load_targets(), "current targets.json (legacy run; original inputs were not saved)"
 
 
 def tls_context():
@@ -109,7 +149,7 @@ def load_texts(pattern, include_originals=False):
     # Prefer rewritten excerpts in broad selections; exact filenames stay accessible.
     if not include_originals and glob.has_magic(pattern):
         paths = [p for p in paths if not os.path.isfile(p.removesuffix(".md") + "_paraphrased.md")]
-    return {os.path.splitext(os.path.basename(p))[0]: open(p).read().strip() for p in paths}
+    return {os.path.splitext(os.path.basename(p))[0]: Path(p).read_text().strip() for p in paths}
 
 
 def call(model, prompt, temperature, key, max_tokens, effort="default"):
@@ -132,6 +172,8 @@ def call(model, prompt, temperature, key, max_tokens, effort="default"):
             choice = r["choices"][0]
             return {
                 "content": choice["message"].get("content") or "",
+                "response_model": r.get("model"),
+                "generation_id": r.get("id"),
                 "finish_reason": choice.get("finish_reason"),
                 "provider": r.get("provider"),
                 "usage": r.get("usage"),
@@ -168,7 +210,7 @@ def parse_answer(text):
 def load_targets(path=None):
     """targets.json maps text-name globs to {"speaker": [regex...], "context": [regex...]}.
     The first matching key wins, "default" applies when none match."""
-    return json.load(open(path or TARGETS_FILE))
+    return json.loads(Path(path or TARGETS_FILE).read_text())
 
 
 def target_for(text, targets):
@@ -186,7 +228,7 @@ def conf(v):
     """Confidence as a float: accepts 35, "35", "35%", "~35"; None if there's no number."""
     if isinstance(v, (int, float)) and not isinstance(v, bool):
         return float(v)
-    m = re.search(r"\d+(?:\.\d+)?", str(v or ""))
+    m = re.search(r"[+-]?\d+(?:\.\d+)?", str(v or ""))
     return float(m.group()) if m else None
 
 
@@ -201,6 +243,16 @@ def probability(value):
     return min(100., max(0., value)) if value is not None and math.isfinite(value) else 0.
 
 
+def normalized_candidates(items):
+    """Scale an overfull list down to 100; never scale an underfull list up."""
+    items = [x for x in items if isinstance(x, dict)]
+    values = [probability(x.get("confidence")) for x in items]
+    total = sum(values)
+    scale = 100 / max(100., total)
+    candidates = [{**item, "confidence": value * scale} for item, value in zip(items, values)]
+    return by_conf(candidates), total
+
+
 def score(record, targets):
     t = target_for(record["text"], targets)
     content = record.get("content", "")
@@ -210,22 +262,25 @@ def score(record, targets):
         error = "truncated: max_tokens used up before any answer (reasoning model?)"
     row = {k: record[k] for k in ("text", "model", "run")}
     row["effort"] = record.get("effort", "default")
+    row["scoring_version"] = SCORING_VERSION
+    row["is_control"] = is_control(record["text"])
     row.update(parsed=bool(a), target_rank="", target_conf="", top1_speaker="", top1_conf="",
                top_context="", context_match=False, error=error,
                speaker_conf=0., context_conf=0., soft_score=0.,
+               speaker_conf_total=0., context_conf_total=0.,
                cost_usd=(record.get("usage") or {}).get("cost"))
     if not a:
         # fall back: does the target name appear anywhere in the raw reply?
         row["target_rank"] = "mentioned" if matches(content, t["speaker"]) else ""
         return row
-    speakers = by_conf(a.get("speakers") or [])
+    speakers, row["speaker_conf_total"] = normalized_candidates(a.get("speakers") or [])
     for i, s in enumerate(speakers, 1):
         if matches(str(s.get("name")), t["speaker"]):
             row["target_rank"], row["target_conf"] = i, conf(s.get("confidence"))
             break
     if speakers:
         row["top1_speaker"], row["top1_conf"] = speakers[0].get("name", ""), conf(speakers[0].get("confidence"))
-    ctx = by_conf(a.get("context") or [])
+    ctx, row["context_conf_total"] = normalized_candidates(a.get("context") or [])
     if ctx:
         row["top_context"] = ctx[0].get("guess", "")
         row["context_match"] = matches(row["top_context"], t["context"])
@@ -237,11 +292,11 @@ def score(record, targets):
 
 
 def summarize(run_dir):
-    records = [json.loads(l) for l in open(os.path.join(run_dir, "raw.jsonl")) if l.strip()]
+    records = [json.loads(l) for l in (Path(run_dir) / "raw.jsonl").read_text().splitlines() if l.strip()]
     if not records:
         print(f"No records in {run_dir}/raw.jsonl")
         return
-    targets = load_targets()
+    targets, targets_source = run_targets(run_dir)
     rows = [score(r, targets) for r in records]
     with open(os.path.join(run_dir, "scored.csv"), "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
@@ -261,6 +316,7 @@ def summarize(run_dir):
         ctx = sum(1 for r in rs if r["context_match"])
         agg.append({
             "text": text, "model": model, "effort": effort, "runs": n,
+            "scoring_version": SCORING_VERSION, "is_control": is_control(text),
             "target_top1": f"{top1}/{n}", "target_in_top5": f"{top5}/{n}",
             "mean_target_conf": round(sum(confs) / len(confs), 1) if confs else "",
             "context_match": f"{ctx}/{n}",
@@ -268,18 +324,32 @@ def summarize(run_dir):
             "soft_score": round(sum(r["soft_score"] for r in rs) / n, 2),
             "parse_failures": sum(1 for r in rs if not r["parsed"]),
             "errors": sum(1 for r in rs if r["error"]),
+            "normalized_speaker_lists": sum(r["speaker_conf_total"] > 100 for r in rs),
+            "normalized_context_lists": sum(r["context_conf_total"] > 100 for r in rs),
             "top1_answers": "; ".join(sorted({str(r["top1_speaker"]) for r in rs if r["top1_speaker"]})),
         })
     with open(os.path.join(run_dir, "summary.csv"), "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(agg[0].keys()))
         w.writeheader()
         w.writerows(agg)
+    controls = [a for a in agg if a["is_control"]]
+    with (Path(run_dir) / "control_summary.csv").open("w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=list(agg[0]))
+        w.writeheader()
+        w.writerows(controls)
 
     # markdown table for quick reading
     cols = ["text", "model", "effort", "target_top1", "target_in_top5", "mean_target_conf", "context_match", "soft_score", "errors", "top1_answers"]
     md = ["| " + " | ".join(cols) + " |", "|" + "---|" * len(cols)]
-    md += ["| " + " | ".join(str(a[c]) for c in cols) + " |" for a in agg]
-    open(os.path.join(run_dir, "summary.md"), "w").write("\n".join(md) + "\n")
+    table_header = md.copy()
+    md += ["| " + " | ".join(str(a[c]) for c in cols) + " |" for a in agg if not a["is_control"]]
+    if controls:
+        md += ["", "Control results (reported separately; lower recognition confidence is expected)", "", *table_header]
+        md += ["| " + " | ".join(str(a[c]) for c in cols) + " |" for a in controls]
+    md = [f"Scoring: {SCORING_VERSION}. Targets: {targets_source}.", "", *md]
+    (Path(run_dir) / "summary.md").write_text("\n".join(md) + "\n")
+    (Path(run_dir) / "scoring.json").write_text(json.dumps(dict(scoring_version=SCORING_VERSION,
+        targets_source=targets_source, targets=targets), indent=2, ensure_ascii=False) + "\n")
     print("\n".join(md))
     from plot_bench import plot_results
     plot_results(run_dir, rows)
@@ -288,7 +358,7 @@ def summarize(run_dir):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--models", default=os.path.join(ROOT, "models.txt"), help="file with one model id per line, or comma-separated ids")
-    ap.add_argument("--texts", default="*", help="glob over texts/ (without .md), e.g. 'S*' or 'A_*'")
+    ap.add_argument("--texts", default=DEFAULT_TEXTS, help="glob over texts/ (without .md); default: rewritten S1–S6; '*' also includes A–H")
     ap.add_argument("--include-originals", action="store_true", help="include original excerpts alongside paraphrases in glob selections")
     ap.add_argument("--prompt", default=os.path.join(ROOT, "prompts", "identify.md"))
     ap.add_argument("--runs", type=int, default=3)
@@ -315,7 +385,7 @@ def main():
 
     models = load_models(args.models)
     texts = load_texts(args.texts, args.include_originals)
-    template = open(args.prompt).read()
+    template = Path(args.prompt).read_text()
     targets = load_targets()
     efforts = list(dict.fromkeys(args.efforts))
     jobs = [(t, m, e, r) for t in texts for m in models for e in efforts for r in range(1, args.runs + 1)]
@@ -342,10 +412,13 @@ def main():
 
     run_dir = os.path.join(args.results_dir, datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
     os.makedirs(run_dir)
-    json.dump({"models": models, "texts": list(texts), "runs": args.runs, "temperature": args.temperature,
+    snapshot_run(run_dir, texts, template, targets)
+    (Path(run_dir) / "config.json").write_text(json.dumps({"models": models, "texts": list(texts), "runs": args.runs, "temperature": args.temperature,
                "efforts": efforts, "reasoning_models": reasoning_models, "max_tokens": args.max_tokens,
                "effective_temperatures": temperatures,
-               "prompt": template}, open(os.path.join(run_dir, "config.json"), "w"), indent=2, ensure_ascii=False)
+               "scoring_version": SCORING_VERSION, "text_selection": args.texts,
+               "include_originals": args.include_originals,
+               "prompt": template}, indent=2, ensure_ascii=False) + "\n")
 
     out = open(os.path.join(run_dir, "raw.jsonl"), "w")
     done = 0
