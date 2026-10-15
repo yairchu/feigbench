@@ -2,3 +2,17 @@
 # Find current ids with:  python3 run_bench.py --list-models openai anthropic google x-ai deepseek meta-llama mistralai qwen
 # Pick the latest flagship from each provider, plus a smaller/cheaper one or two for contrast.
 # Do NOT use ids ending in ":online" (those add web search).
+anthropic/claude-haiku-5.5
+anthropic/claude-sonnet-5.5
+anthropic/claude-opus-5.5
+anthropic/claude-fable-5.1
+google/gemini-3.5-flash-lite
+google/gemini-3.8-flash
+google/gemini-4-argon
+meta/muse-spark-1.3
+meta/muse-wonder
+openai/gpt-6-luna
+openai/gpt-6.1-sol
+openai/gpt-6-astra
+qwen/qwen3.8-max-0902
+x-ai/grok-4.6
