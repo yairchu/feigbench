@@ -145,7 +145,7 @@ def plot_results(run_dir, rows):
         legend_labels.append(VENDOR_NAMES.get(vendor, vendor))
     legend_handles += [Line2D([], [], color=muted, linewidth=1.5),
                        Line2D([], [], color=muted, linewidth=1.2, linestyle="--")]
-    legend_labels += ["Effort within a model", "Models at same effort"]
+    legend_labels += ["Effort within a model", "Models at medium effort"]
     effort_levels = sorted({p["effort"] for p in points}, key=lambda e: EFFORT_ORDER.index(e) if e in EFFORT_ORDER else -1)
     effort_sizes = {effort: 45 + index * 35 for index, effort in enumerate(effort_levels)}
     for effort in effort_levels:
@@ -168,7 +168,8 @@ def plot_results(run_dir, rows):
             series[p["model"]].append(p)
     vendor_efforts = defaultdict(list)
     for p in points:
-        vendor_efforts[(p["model"].split("/")[0], p["effort"])].append(p)
+        if p["effort"] == "medium":
+            vendor_efforts[(p["model"].split("/")[0], p["effort"])].append(p)
     for (_, effort), ps in vendor_efforts.items():
         ps.sort(key=lambda p: p["mean_cost_usd"])
         for left, right in zip(ps, ps[1:]):
