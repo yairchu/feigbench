@@ -2,6 +2,7 @@
 """Generate exportable cost/score charts from an existing benchmark run."""
 import argparse
 import csv
+import hashlib
 import json
 import math
 from collections import defaultdict
@@ -9,6 +10,57 @@ from pathlib import Path
 from run_bench import SCORING_VERSION, is_control
 
 EFFORT_ORDER = ("none", "minimal", "low", "medium", "high", "xhigh", "max")
+VENDOR_COLORS = {"anthropic": "#cb6d43", "google": "#397bca", "openai": "#169987",
+                 "meta": "#806bb2", "meta-llama": "#806bb2", "x-ai": "#b44876",
+                 "deepseek": "#537b38", "mistralai": "#b18a24", "qwen": "#526099"}
+VENDOR_NAMES = {"anthropic": "Anthropic", "google": "Google", "openai": "OpenAI",
+                "meta": "Meta", "meta-llama": "Meta", "x-ai": "xAI"}
+MARKERS = ("o", "s", "D", "^", "P", "X", "v", "*", "<", ">")
+
+
+def model_styles(models):
+    """Share a vendor color; assign distinct shapes to its models."""
+    grouped = defaultdict(list)
+    for model in sorted(set(models)):
+        grouped[model.split("/")[0]].append(model)
+    styles = {}
+    for vendor, names in grouped.items():
+        fallback = ("#537b38", "#b18a24", "#526099", "#93654b")
+        color = VENDOR_COLORS.get(vendor, fallback[int(hashlib.sha256(vendor.encode()).hexdigest()[:8], 16) % len(fallback)])
+        for index, model in enumerate(names):
+            styles[model] = dict(color=color, marker=MARKERS[index % len(MARKERS)])
+    return styles
+
+
+def place_labels(fig, ax, annotations, points):
+    """Choose nearby label positions that avoid other labels and data markers."""
+    from matplotlib.text import Text
+    from matplotlib.transforms import Bbox
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    occupied = []
+    markers = [Bbox.from_bounds(x - 9, y - 9, 18, 18) for x, y in ax.transData.transform(points)]
+
+    def area(box):
+        return max(0, box.width) * max(0, box.height) if box is not None else 0
+
+    for annotation in annotations:
+        preferred = annotation.get_position()
+        candidates = [preferred, (0, 20), (0, -26), (35, 12), (-35, 12), (40, -20),
+                      (-40, -20), (0, 38), (0, -42), (65, 8), (-65, 8), (40, 32), (-40, 32)]
+        choices = []
+        for dx, dy in candidates:
+            annotation.set_position((dx, dy))
+            annotation.update_positions(renderer)
+            box = Text.get_window_extent(annotation, renderer).padded(4)
+            overlap = sum(area(Bbox.intersection(box, other)) for other in occupied)
+            marker_overlap = sum(area(Bbox.intersection(box, marker)) for marker in markers)
+            outside = area(box) - area(Bbox.intersection(box, ax.bbox))
+            penalty = 100 * overlap + 10 * marker_overlap + 100 * outside + dx * dx + dy * dy
+            choices.append((penalty, (dx, dy), box))
+        _, position, box = min(choices, key=lambda choice: choice[0])
+        annotation.set_position(position)
+        occupied.append(box)
 
 
 def model_summary(rows):
@@ -54,14 +106,15 @@ def plot_results(run_dir, rows):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+    from matplotlib.lines import Line2D
     from matplotlib.ticker import FuncFormatter, LogLocator, NullFormatter
 
     background, ink, muted = "#f5f3ed", "#152d35", "#61747b"
-    colors = {"anthropic": "#cb6d43", "google": "#397bca", "openai": "#169987"}
-    fig, ax = plt.subplots(figsize=(11, 7.4))
+    styles = model_styles(p["model"] for p in points)
+    fig, ax = plt.subplots(figsize=(14, 8))
     fig.patch.set_facecolor(background)
     ax.set_facecolor(background)
-    fig.subplots_adjust(left=.10, right=.96, top=.78, bottom=.23)
+    fig.subplots_adjust(left=.08, right=.73, top=.78, bottom=.23)
     fig.text(.10, .93, "FEIGBENCH", fontsize=11, weight="bold", color=muted)
     fig.text(.10, .865, "Recognition, at what cost?", fontsize=27, weight="bold", color=ink)
     fig.text(.10, .815, "Disguised interviews · soft identification score · higher and further left is better",
@@ -86,6 +139,22 @@ def plot_results(run_dir, rows):
     ax.set_xlabel("Average cost per request (USD" + (", logarithmic scale)" if positive else ")"),
                   color=ink, fontsize=11, labelpad=14)
     ax.set_ylabel("Soft score / 100", color=ink, fontsize=11, labelpad=12)
+    legend_handles, legend_labels, vendor_headers = [], [], []
+    for vendor in sorted({m.split("/")[0] for m in styles}):
+        vendor_headers.append(len(legend_labels))
+        legend_handles.append(Line2D([], [], linestyle="none"))
+        legend_labels.append(VENDOR_NAMES.get(vendor, vendor))
+        for model in sorted(m for m in styles if m.split("/")[0] == vendor):
+            legend_handles.append(Line2D([], [], linestyle="-", linewidth=1.4, markersize=8,
+                                         markeredgecolor="white", **styles[model]))
+            legend_labels.append(model.split("/")[-1])
+    legend = fig.legend(legend_handles, legend_labels, loc="upper left", bbox_to_anchor=(.755, .79),
+                        frameon=False, fontsize=10, labelspacing=.8, handlelength=2.2,
+                        title="Vendor color · model shape", title_fontsize=10)
+    for index in vendor_headers:
+        legend.get_texts()[index].set_weight("bold")
+    for text in legend.get_texts():
+        text.set_color(ink)
     series = defaultdict(list)
     cohorts = defaultdict(set)
     for row in rows:
@@ -96,26 +165,22 @@ def plot_results(run_dir, rows):
             series[p["model"]].append(p)
     multiple = any(len(ps) > 1 for ps in series.values())
     if multiple:
-        fig.subplots_adjust(top=.71)
         for model, ps in sorted(series.items()):
             ps.sort(key=lambda p: EFFORT_ORDER.index(p["effort"]))
             # Do not connect settings evaluated on different texts or run counts.
             comparable = all(cohorts[(model, p["effort"])] == cohorts[(model, ps[0]["effort"])] for p in ps)
             if len(ps) > 1 and comparable:
                 ax.plot([p["mean_cost_usd"] for p in ps], [p["soft_score"] for p in ps],
-                        color=colors.get(model.split("/")[0], "#806bb2"), alpha=.65,
+                        color=styles[model]["color"], alpha=.65,
                         linewidth=1.8, label=model.split("/")[-1])
             elif not comparable:
                 print(f"Not connecting {model}: effort settings have different evaluation cohorts.")
-        handles, labels = ax.get_legend_handles_labels()
-        if handles:
-            ax.legend(handles, labels, loc="lower left", bbox_to_anchor=(0, 1.03),
-                      frameon=False, ncol=3, fontsize=9, labelcolor=ink)
+    annotations = []
     for p in points:
-        color = colors.get(p["model"].split("/")[0], "#806bb2")
+        color, marker = styles[p["model"]]["color"], styles[p["model"]]["marker"]
         x, y = p["mean_cost_usd"], p["soft_score"]
-        ax.scatter(x, y, s=650, color=color, alpha=.10, linewidth=0)
-        ax.scatter(x, y, s=135, color=color, edgecolor="white", linewidth=2, zorder=3)
+        ax.scatter(x, y, s=450, color=color, marker=marker, alpha=.08, linewidth=0)
+        ax.scatter(x, y, s=115, color=color, marker=marker, edgecolor="white", linewidth=1.5, zorder=3)
         label = p["model"].split("/")[-1].replace("-", " ")
         connected = multiple and len(series.get(p["model"], [])) > 1 and p["effort"] != "default"
         if connected:
@@ -125,9 +190,12 @@ def plot_results(run_dir, rows):
             label += f" ({p['effort']})" if p["effort"] != "default" else ""
             label += f"\n{y:.1f} pts · ${x:.5f}"
             offset = (0, 19)
-        ax.annotate(label, (x, y), xytext=offset,
-                    textcoords="offset points", ha="center", fontsize=10, color=ink,
-                    linespacing=1.5)
+        annotations.append(ax.annotate(label, (x, y), xytext=offset,
+                    textcoords="offset points", ha="center", fontsize=9, color=ink,
+                    bbox=dict(boxstyle="round,pad=.15", fc=background, ec="none", alpha=.94),
+                    arrowprops=dict(arrowstyle="-", color=color, lw=.6, alpha=.6),
+                    linespacing=1.5))
+    place_labels(fig, ax, annotations, [(p["mean_cost_usd"], p["soft_score"]) for p in points])
     text_counts = sorted({p['texts'] for p in points})
     call_counts = sorted({p['calls'] for p in points})
     counts = (f"{len({p['model'] for p in points})} models · {len(points)} settings · "
