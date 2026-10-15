@@ -89,6 +89,8 @@ uv run run_bench.py --summarize results/<dir> # re-score an existing run
 uv run run_bench.py --resume results/<dir> --dry-run # count unfinished/API-failed calls offline
 uv run run_bench.py --resume results/<dir>   # continue after topping up or an interruption
 uv run plot_bench.py results/<dir>           # regenerate just the cost/score chart
+uv run plot_bench.py results/<dir> --size 1080x1350  # exact PNG dimensions, portrait layout
+uv run plot_bench.py results/<dir> --aspect-ratio 4:5  # ratio without a fixed pixel size
 uv run speaker_report.py results/<dir>       # non-Israeli highest-confidence speaker guesses
 uv run python -m unittest discover tests             # offline tests, no key or network needed
 ```

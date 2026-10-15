@@ -87,7 +87,18 @@ def model_summary(rows):
     return result
 
 
-def plot_results(run_dir, rows):
+def parse_dimensions(value):
+    """Accept a positive width and height, as pixels or a ratio."""
+    try:
+        width, height = map(int, value.lower().replace(":", "x").split("x"))
+        if width <= 0 or height <= 0:
+            raise ValueError
+        return width, height
+    except ValueError:
+        raise argparse.ArgumentTypeError("Use positive WIDTHxHEIGHT or WIDTH:HEIGHT values.") from None
+
+
+def plot_results(run_dir, rows, *, aspect_ratio=None, size=None):
     directory = Path(run_dir)
     points = model_summary(rows)
     if not points:
@@ -110,10 +121,15 @@ def plot_results(run_dir, rows):
 
     background, ink, muted = "#f5f3ed", "#152d35", "#61747b"
     styles = model_styles(p["model"] for p in points)
-    fig, ax = plt.subplots(figsize=(14, 8))
+    width, height = size or aspect_ratio or (14, 8)
+    portrait = width / height < 1.2
+    figure_width = 10 if portrait else 14
+    dpi = width / figure_width if size else 180
+    fig, ax = plt.subplots(figsize=(figure_width, figure_width * height / width), dpi=dpi)
     fig.patch.set_facecolor(background)
     ax.set_facecolor(background)
-    fig.subplots_adjust(left=.08, right=.78, top=.78, bottom=.23)
+    fig.subplots_adjust(**(dict(left=.11, right=.95, top=.68, bottom=.25) if portrait
+                           else dict(left=.08, right=.78, top=.78, bottom=.23)))
     fig.text(.10, .93, "FEIGBENCH 1.0", fontsize=11, weight="bold", color=muted)
     fig.text(.10, .865, "Performance / Effort", fontsize=27, weight="bold", color=ink)
     positive = all(p["mean_cost_usd"] > 0 for p in points)
@@ -154,7 +170,9 @@ def plot_results(run_dir, rows):
                                      markersize=math.sqrt(effort_sizes[effort]),
                                      markerfacecolor=background if effort in hollow_efforts else muted))
         legend_labels.append(effort.capitalize())
-    legend = fig.legend(legend_handles, legend_labels, loc="upper left", bbox_to_anchor=(.795, .79),
+    legend = fig.legend(legend_handles, legend_labels, loc="upper left",
+                        bbox_to_anchor=(.10, .82) if portrait else (.795, .79),
+                        ncol=3 if portrait else 1,
                         frameon=False, fontsize=10, labelspacing=.8, handlelength=2.2,
                         title="Vendor / connections", title_fontsize=10)
     for text in legend.get_texts():
@@ -214,14 +232,16 @@ def plot_results(run_dir, rows):
     call_counts = sorted({p['calls'] for p in points})
     counts = (f"{len({p['model'] for p in points})} models · {len(points)} settings · "
               f"{'/'.join(map(str, text_counts))} texts per setting · {'/'.join(map(str, call_counts))} calls per setting")
-    fig.text(.10, .115, "SCORE = ½ speaker confidence + ½ matching-context confidence", fontsize=10,
+    fig.text(.10, .14 if portrait else .115,
+             "SCORE = ½ speaker confidence + ½ matching-context confidence", fontsize=10,
              color=ink, weight="bold")
-    fig.text(.10, .078, "Candidate lists normalized above 100%. Equal weight per text. S6 control excluded.",
+    fig.text(.10, .105 if portrait else .078,
+             "Candidate lists normalized above 100%. Equal weight per text. S6 control excluded.",
              fontsize=9, color=muted)
-    fig.text(.10, .047, counts, fontsize=8, color=muted)
-    fig.text(.10, .018, f"Run {directory.name} · {SCORING_VERSION} · self-reported confidence · recorded API cost", fontsize=8, color=muted)
+    fig.text(.10, .075 if portrait else .047, counts, fontsize=8, color=muted)
+    fig.text(.10, .045 if portrait else .018, f"Run {directory.name} · {SCORING_VERSION} · self-reported confidence · recorded API cost", fontsize=8, color=muted)
     for extension in ("png", "svg"):
-        fig.savefig(directory / f"cost_score.{extension}", dpi=180, facecolor=background)
+        fig.savefig(directory / f"cost_score.{extension}", dpi=dpi, facecolor=background)
     plt.close(fig)
     print(f"Charts: {directory}/cost_score.png and cost_score.svg")
 
@@ -229,11 +249,17 @@ def plot_results(run_dir, rows):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("run_dir")
+    dimensions = parser.add_mutually_exclusive_group()
+    dimensions.add_argument("--aspect-ratio", type=parse_dimensions, metavar="W:H",
+                            help="target canvas ratio, e.g. 4:5")
+    dimensions.add_argument("--size", type=parse_dimensions, metavar="WIDTHxHEIGHT",
+                            help="exact PNG dimensions, e.g. 1080x1350; SVG uses the same ratio")
     args = parser.parse_args()
     from run_bench import run_targets, score, effective_records, read_attempts
     targets, _ = run_targets(args.run_dir)
     records = effective_records(read_attempts(args.run_dir))
-    plot_results(args.run_dir, [score(r, targets) for r in records])
+    plot_results(args.run_dir, [score(r, targets) for r in records],
+                 aspect_ratio=args.aspect_ratio, size=args.size)
 
 
 if __name__ == "__main__":
