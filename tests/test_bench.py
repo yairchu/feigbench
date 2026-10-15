@@ -215,6 +215,15 @@ class SoftScoreTest(unittest.TestCase):
         self.assertEqual(row["target_rank"], 1)
         self.assertEqual(self.score(CLEAN)["soft_score"], 70)  # partial lists are never scaled up
 
+    def test_truncation_is_flagged_with_partial_or_complete_content(self):
+        record = dict(text='S1_test', model='m', run=1, finish_reason='length',
+                      usage={'completion_tokens': 16000, 'completion_tokens_details': {'reasoning_tokens': 15300}})
+        for content, expected_score in [(json.dumps(CLEAN)[:-10], 0), (json.dumps(CLEAN), 70)]:
+            row = run_bench.score({**record, 'content': content}, run_bench.load_targets())
+            self.assertIn('truncated', row['error'])
+            self.assertEqual(row['soft_score'], expected_score)
+            self.assertEqual((row['completion_tokens'], row['reasoning_tokens']), (16000, 15300))
+
     def test_aggregation_weights_texts_equally_and_excludes_control(self):
         from plot_bench import model_summary
         row = self.score(CLEAN)

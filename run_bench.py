@@ -256,12 +256,15 @@ def score(record, targets):
     content = record.get("content", "")
     a = parse_answer(content) if content else None
     error = record.get("error", "")
-    if not error and not content and record.get("finish_reason") == "length":
-        error = "truncated: max_tokens used up before any answer (reasoning model?)"
+    if not error and record.get("finish_reason") == "length":
+        error = "truncated: max_tokens reached" + (" before any answer" if not content else " during the answer")
     row = {k: record[k] for k in ("text", "model", "run")}
     row["effort"] = record.get("effort", "default")
     row["scoring_version"] = SCORING_VERSION
     row["is_control"] = is_control(record["text"])
+    row["finish_reason"] = record.get("finish_reason", "")
+    row["completion_tokens"] = (record.get("usage") or {}).get("completion_tokens")
+    row["reasoning_tokens"] = ((record.get("usage") or {}).get("completion_tokens_details") or {}).get("reasoning_tokens")
     row.update(parsed=bool(a), target_rank="", target_conf="", top1_speaker="", top1_conf="",
                top_context="", context_match=False, error=error,
                speaker_conf=0., context_conf=0., soft_score=0.,
@@ -322,6 +325,7 @@ def summarize(run_dir):
             "soft_score": round(sum(r["soft_score"] for r in rs) / n, 2),
             "parse_failures": sum(1 for r in rs if not r["parsed"]),
             "errors": sum(1 for r in rs if r["error"]),
+            "truncations": sum(r["finish_reason"] == "length" for r in rs),
             "normalized_speaker_lists": sum(r["speaker_conf_total"] > 100 for r in rs),
             "normalized_context_lists": sum(r["context_conf_total"] > 100 for r in rs),
             "top1_answers": "; ".join(sorted({str(r["top1_speaker"]) for r in rs if r["top1_speaker"]})),
@@ -337,7 +341,7 @@ def summarize(run_dir):
         w.writerows(controls)
 
     # markdown table for quick reading
-    cols = ["text", "model", "effort", "target_top1", "target_in_top5", "mean_target_conf", "context_match", "soft_score", "errors", "top1_answers"]
+    cols = ["text", "model", "effort", "target_top1", "target_in_top5", "mean_target_conf", "context_match", "soft_score", "errors", "truncations", "top1_answers"]
     md = ["| " + " | ".join(cols) + " |", "|" + "---|" * len(cols)]
     table_header = md.copy()
     md += ["| " + " | ".join(str(a[c]) for c in cols) + " |" for a in agg if not a["is_control"]]

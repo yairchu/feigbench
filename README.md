@@ -93,7 +93,7 @@ uv run python -m unittest discover tests             # offline tests, no key or 
 
 The tests replace the HTTP layer with a mock that returns scripted OpenRouter replies (clean JSON, messy JSON with `"35%"` confidences, a reasoning model that hit `max_tokens`, a 503 then success, a 400). OpenRouter has no sandbox of its own. To try a real call cheaply, use one of its `:free` model ids.
 
-`targets.json` says which speaker and context count as correct for each text, as regexes keyed by a glob over text names (first match wins, `default` otherwise). Speaker and context lists are re-sorted by the model's confidence before ranking, since models don't always list them in order. `--max-tokens` defaults to 16000 because reasoning models count hidden reasoning against it; a reply that ran out before answering is reported as `truncated` in the `error` column.
+`targets.json` says which speaker and context count as correct for each text, as regexes keyed by a glob over text names (first match wins, `default` otherwise). Speaker and context lists are re-sorted by the model's confidence before ranking, since models don't always list them in order. `--max-tokens` defaults to 16000 because reasoning models count hidden reasoning against it. Every response with `finish_reason: "length"` is flagged as `truncated`, including partial answers. Summaries count `truncations`; scored rows also record completion and reasoning token usage. An incomplete, unparseable answer receives zero, while a complete parseable answer can still earn credit despite the limit flag.
 
 HTTPS requests use the `certifi` CA bundle, so python.org installations do not need a separate macOS certificate setup. For a custom certificate authority, set `SSL_CERT_FILE` to your trusted CA bundle (or `SSL_CERT_DIR` to an OpenSSL certificate directory). Certificate verification remains enabled.
 
@@ -139,6 +139,14 @@ All requests omit `temperature`, using each model/provider's default sampling be
 ```bash
 uv run run_bench.py --models anthropic/claude-haiku-5.5,openai/gpt-6-luna --texts S1_burned_cities_paraphrased --efforts low --runs 1
 ```
+
+To probe Gemini Flash's high-effort token budget across all six rewritten inputs, use a separate run with a 32,000-token limit:
+
+```bash
+uv run run_bench.py --models google/gemini-3.8-flash --efforts high --runs 3 --max-tokens 32000
+```
+
+This makes 18 calls. Check `summary.csv` for truncations and `scored.csv` for actual token usage. If 32,000 still truncates, try 48,000 before choosing the final benchmark budget; the provider must support the selected limit. A larger budget is not guaranteed to eliminate truncations, and changing it can affect both reasoning behavior and cost. Choose the final budget before the main comparison.
 
 ## Next steps
 
