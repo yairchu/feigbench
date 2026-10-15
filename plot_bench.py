@@ -28,7 +28,7 @@ MODEL_NAMES = {
     "gpt-6-luna": "GPT-6 Luna",
     "gpt-6.1-sol": "GPT-6.1 Sol",
     "gpt-6-astra": "GPT-6 Astra",
-    "qwen3.8-max-0902": "Qwen3.8 Max (0902)",
+    "qwen3.8-max-0902": "Qwen3.8 Max",
     "grok-4.6": "Grok 4.6",
 }
 
