@@ -114,10 +114,8 @@ def plot_results(run_dir, rows):
     fig.patch.set_facecolor(background)
     ax.set_facecolor(background)
     fig.subplots_adjust(left=.08, right=.78, top=.78, bottom=.23)
-    fig.text(.10, .93, "FEIGBENCH", fontsize=11, weight="bold", color=muted)
-    fig.text(.10, .865, "Recognition, at what cost?", fontsize=27, weight="bold", color=ink)
-    fig.text(.10, .815, "Disguised interviews · soft identification score · higher and further left is better",
-             fontsize=11, color=muted)
+    fig.text(.10, .93, "FEIGBENCH 1.0", fontsize=11, weight="bold", color=muted)
+    fig.text(.10, .865, "Performance / Effort", fontsize=27, weight="bold", color=ink)
     positive = all(p["mean_cost_usd"] > 0 for p in points)
     if positive:
         ax.set_xscale("log")
