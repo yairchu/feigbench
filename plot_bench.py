@@ -16,10 +16,10 @@ VENDOR_COLORS = {"anthropic": "#cb6d43", "google": "#397bca", "openai": "#169987
 VENDOR_NAMES = {"anthropic": "Anthropic", "google": "Google", "openai": "OpenAI",
                 "meta": "Meta", "meta-llama": "Meta", "x-ai": "xAI", "qwen": "Qwen"}
 MODEL_NAMES = {
-    "claude-haiku-5.5": "Haiku 5.5",
-    "claude-sonnet-5.5": "Sonnet 5.5",
-    "claude-opus-5.5": "Opus 5.5",
-    "claude-fable-5.1": "Fable 5.1",
+    "claude-haiku-5.5": "Claude Haiku 5.5",
+    "claude-sonnet-5.5": "Claude Sonnet 5.5",
+    "claude-opus-5.5": "Claude Opus 5.5",
+    "claude-fable-5.1": "Claude Fable 5.1",
     "gemini-3.5-flash-lite": "Gemini 3.5 Flash Lite",
     "gemini-3.8-flash": "Gemini 3.8 Flash",
     "gemini-4-argon": "Gemini 4 Argon",
