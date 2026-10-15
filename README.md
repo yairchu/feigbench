@@ -28,13 +28,13 @@ This is for a video in Yair's political video series. Any quote shown publicly m
 
 The paraphrases test whether recognition survives changes in wording. They preserve the severity and certainty of the positions, avoid adding real-world names or political labels, and deliberately keep the original fictional references (including the Ford Treaty). S5 reuses the matching rewritten passages from S1 and S4 so comparisons between excerpts remain consistent. These are model-written experimental stimuli, not quotations or independent source material.
 
-Run the originals and paraphrases together with identical model/effort settings:
+Default runs use the rewritten S1–S6 excerpts in place of their originals, alongside A–H. `--texts 'S*'` selects only the six rewritten excerpts. Originals remain available by exact name, or through `--include-originals` for a paired comparison:
 
 ```bash
-uv run run_bench.py --texts 'S*' --efforts medium --runs 3
+uv run run_bench.py --texts 'S*' --include-originals --efforts medium --runs 3
 ```
 
-`S*` now selects 12 texts: six originals and six paraphrases. Compare each original with its `_paraphrased` partner in `summary.csv`, especially `mean_target_conf`, `mean_context_conf`, and `soft_score`. The per-model scatter averages both versions together; it does not measure the paraphrase effect separately. Both versions of S6 are excluded from that average and retained in the per-text summaries as controls. A drop after rewriting would show sensitivity to wording; it would not by itself distinguish conversational style from recognition of a particular passage. Use multiple runs before interpreting a difference.
+With `--include-originals`, this selects 12 texts: six originals and six paraphrases. Compare each original with its `_paraphrased` partner in `summary.csv`, especially `mean_target_conf`, `mean_context_conf`, and `soft_score`. In paired runs the per-model scatter averages both versions together; it does not measure the paraphrase effect separately. Both versions of S6 are excluded from that average and retained in the per-text summaries as controls. A drop after rewriting would show sensitivity to wording; it would not by itself distinguish conversational style from recognition of a particular passage. Use multiple runs before interpreting a difference.
 
 `results/manual_chatgpt_runs_and_key_he.md` (Hebrew) has the full substitution key and the manual ChatGPT results.
 
@@ -114,7 +114,7 @@ Effort is saved in the run configuration, raw records, and every summary. The ch
 During explicit effort sweeps, models whose advertised `supported_parameters` omit `temperature` use their provider's temperature default. The runner prints this and records `effective_temperatures` in `config.json` (`null` means omitted). Sending temperature to these models with strict parameter routing would reject every endpoint even when reasoning effort is supported. To smoke-test routing before a full sweep, run one text and one effort level first:
 
 ```bash
-uv run run_bench.py --models anthropic/claude-haiku-5.5,openai/gpt-6-luna --texts S1_burned_cities --efforts low --runs 1
+uv run run_bench.py --models anthropic/claude-haiku-5.5,openai/gpt-6-luna --texts S1_burned_cities_paraphrased --efforts low --runs 1
 ```
 
 ## Next steps

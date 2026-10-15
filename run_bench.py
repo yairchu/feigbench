@@ -104,8 +104,11 @@ def load_models(arg):
     return [l.split("#")[0].strip() for l in lines if l.split("#")[0].strip()]
 
 
-def load_texts(pattern):
+def load_texts(pattern, include_originals=False):
     paths = sorted(glob.glob(os.path.join(ROOT, "texts", pattern + ("" if pattern.endswith(".md") else ".md"))))
+    # Prefer rewritten excerpts in broad selections; exact filenames stay accessible.
+    if not include_originals and glob.has_magic(pattern):
+        paths = [p for p in paths if not os.path.isfile(p.removesuffix(".md") + "_paraphrased.md")]
     return {os.path.splitext(os.path.basename(p))[0]: open(p).read().strip() for p in paths}
 
 
@@ -286,6 +289,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--models", default=os.path.join(ROOT, "models.txt"), help="file with one model id per line, or comma-separated ids")
     ap.add_argument("--texts", default="*", help="glob over texts/ (without .md), e.g. 'S*' or 'A_*'")
+    ap.add_argument("--include-originals", action="store_true", help="include original excerpts alongside paraphrases in glob selections")
     ap.add_argument("--prompt", default=os.path.join(ROOT, "prompts", "identify.md"))
     ap.add_argument("--runs", type=int, default=3)
     ap.add_argument("--temperature", type=float, default=1.0)
@@ -310,7 +314,7 @@ def main():
         return summarize(args.summarize)
 
     models = load_models(args.models)
-    texts = load_texts(args.texts)
+    texts = load_texts(args.texts, args.include_originals)
     template = open(args.prompt).read()
     targets = load_targets()
     efforts = list(dict.fromkeys(args.efforts))
