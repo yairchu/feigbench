@@ -15,9 +15,9 @@ Usage:
 The expected speaker and context for each text are in targets.json.
 Set OPENROUTER_BASE_URL to use another OpenAI-compatible endpoint.
 """
-import argparse, csv, datetime, fnmatch, glob, hashlib, json, math, os, re, shutil, ssl, subprocess, sys, time, urllib.error, urllib.request
+import argparse, csv, datetime, fcntl, fnmatch, glob, hashlib, json, math, os, re, shutil, ssl, subprocess, sys, time, urllib.error, urllib.request
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 import certifi
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -31,6 +31,105 @@ CONTROL = "S6_leadership_only_control"
 
 def is_control(text):
     return text.removesuffix("_paraphrased") == CONTROL
+
+
+def job_key(record):
+    return record['text'], record['model'], record.get('effort', 'default'), record['run']
+
+
+def read_attempts(run_dir):
+    path = Path(run_dir) / 'raw.jsonl'
+    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()] if path.exists() else []
+
+
+def effective_records(attempts):
+    """One result per job: keep the first model response, otherwise the latest API error."""
+    selected = {}
+    for record in attempts:
+        key = job_key(record)
+        if key not in selected or selected[key].get('error'):
+            selected[key] = record
+    return list(selected.values())
+
+
+def execute_jobs(run_dir, jobs, texts, template, key, max_tokens, concurrency):
+    """Bound in-flight requests; stop submitting on credit/authentication failures."""
+    remaining = iter(jobs)
+    stopped = False
+    done = 0
+    with open(Path(run_dir) / 'raw.jsonl', 'a') as out, ThreadPoolExecutor(concurrency) as executor:
+        pending = {}
+
+        def fill():
+            while not stopped and len(pending) < concurrency:
+                job = next(remaining, None)
+                if job is None:
+                    break
+                text, model, effort, run = job
+                pending[executor.submit(call, model, template.replace('{{TEXT}}', texts[text]),
+                                        key, max_tokens, effort)] = job
+
+        fill()
+        while pending:
+            try:
+                completed, _ = wait(pending, return_when=FIRST_COMPLETED)
+            except KeyboardInterrupt:
+                stopped = True
+                print('\nStopping new calls; saving in-flight replies before exiting...', flush=True)
+                continue
+            for future in completed:
+                text, model, effort, run = pending.pop(future)
+                record = dict(text=text, model=model, effort=effort, run=run, **future.result())
+                out.write(json.dumps(record, ensure_ascii=False) + '\n')
+                out.flush()
+                done += 1
+                error = record.get('error', '')
+                status = 'ERROR ' + error[:80] if error else record.get('finish_reason', 'ok')
+                print(f'[{done}/{len(jobs)}] {text} | {model} | effort {effort} | run {run}: {status}', flush=True)
+                if record.get('http_status') in (401, 402) or error.startswith(('HTTP 401:', 'HTTP 402:')):
+                    stopped = True
+                    print('Credit/key limit or authentication failure: no further calls will be submitted.', flush=True)
+            fill()
+    return stopped
+
+
+def resume_run(run_dir, dry_run=False, concurrency=4):
+    directory = Path(run_dir)
+    config = json.loads((directory / 'config.json').read_text())
+    snapshot = json.loads((directory / 'snapshot.json').read_text())
+    run_targets(directory)  # Check scorer compatibility; never use current workspace inputs.
+    if snapshot.get('api_base_url', API) != API:
+        raise ValueError('OPENROUTER_BASE_URL differs from the saved run.')
+    if config.get('sampling') != 'provider defaults (temperature omitted)':
+        raise ValueError('Resume currently supports runs made with provider-default sampling only.')
+    if snapshot['prompt'] != config['prompt'] or set(snapshot['texts']) != set(config['texts']):
+        raise ValueError('Saved configuration and input snapshot disagree.')
+    # New processes cooperate on this lock. Older runners must be stopped before resuming.
+    with (directory / '.runner.lock').open('a') as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise ValueError('Another runner is already writing to this run.') from None
+        attempts = read_attempts(directory)
+        completed = {job_key(r) for r in attempts if not r.get('error')}
+        planned = [(t, m, e, r) for t in config['texts'] for m in config['models']
+                   for e in config.get('efforts', ['default']) for r in range(1, config['runs'] + 1)]
+        jobs = [job for job in planned if job not in completed]
+        print(f'Resume {directory}: {len(planned) - len(jobs)} completed; {len(jobs)} missing or API-failed calls remain.')
+        if dry_run:
+            return
+        if jobs:
+            key = os.environ.get('OPENROUTER_API_KEY')
+            if not key:
+                raise ValueError('Set OPENROUTER_API_KEY first.')
+            resumed = directory / 'resumptions' / datetime.datetime.now().strftime('%Y%m%d-%H%M%S-%f')
+            resumed.mkdir(parents=True)
+            snapshot_run(resumed, snapshot['texts'], snapshot['prompt'], snapshot['targets'])
+            shutil.copyfile(directory / 'config.json', resumed / 'config.json')
+            (directory / 'resumptions' / 'latest.json').write_text(json.dumps(
+                dict(code_path=str(resumed.relative_to(directory) / 'code'), pending_calls=len(jobs)), indent=2) + '\n')
+            execute_jobs(directory, jobs, snapshot['texts'], snapshot['prompt'], key, config['max_tokens'], concurrency)
+        summarize(directory)
 
 
 def snapshot_run(run_dir, texts, prompt, targets):
@@ -166,6 +265,9 @@ def call(model, prompt, key, max_tokens, effort="default"):
             t0 = time.time()
             r = http("POST", f"{API}/chat/completions", body, key)
             if "error" in r:
+                code = r['error'].get('code') if isinstance(r['error'], dict) else None
+                if code in (401, 402):
+                    return {'error': f'HTTP {code}: {json.dumps(r["error"])}', 'http_status': code}
                 raise RuntimeError(json.dumps(r["error"]))
             choice = r["choices"][0]
             return {
@@ -182,7 +284,7 @@ def call(model, prompt, key, max_tokens, effort="default"):
             if e.code in (429, 500, 502, 503, 504) and attempt < 5:
                 time.sleep(2 ** attempt * 3)
                 continue
-            return {"error": f"HTTP {e.code}: {msg}"}
+            return {"error": f"HTTP {e.code}: {msg}", "http_status": e.code}
         except CertificateError as e:
             return {"error": str(e)}
         except Exception as e:  # noqa: BLE001
@@ -293,7 +395,7 @@ def score(record, targets):
 
 
 def summarize(run_dir):
-    records = [json.loads(l) for l in (Path(run_dir) / "raw.jsonl").read_text().splitlines() if l.strip()]
+    records = effective_records(read_attempts(run_dir))
     if not records:
         print(f"No records in {run_dir}/raw.jsonl")
         return
@@ -375,8 +477,15 @@ def main():
     ap.add_argument("--list-models", nargs="*", metavar="FILTER")
     ap.add_argument("--list-efforts", nargs="*", metavar="FILTER", help="show advertised effort levels for matching model ids")
     ap.add_argument("--summarize", metavar="RUN_DIR")
+    ap.add_argument("--resume", metavar="RUN_DIR", help="resume saved inputs/settings; skip completed responses and retry API errors")
     ap.add_argument("--results-dir", default=os.path.join(ROOT, "results"))
     args = ap.parse_args()
+
+    if args.resume:
+        try:
+            return resume_run(args.resume, args.dry_run, args.concurrency)
+        except (ValueError, OSError) as e:
+            sys.exit(str(e))
 
     if args.list_models is not None or args.list_efforts is not None:
         try:
@@ -417,20 +526,9 @@ def main():
                "include_originals": args.include_originals,
                "prompt": template}, indent=2, ensure_ascii=False) + "\n")
 
-    out = open(os.path.join(run_dir, "raw.jsonl"), "w")
-    done = 0
-    with ThreadPoolExecutor(args.concurrency) as ex:
-        futs = {ex.submit(call, m, template.replace("{{TEXT}}", texts[t]), key, args.max_tokens, e): (t, m, e, r)
-                for t, m, e, r in jobs}
-        for fut in as_completed(futs):
-            t, m, e, r = futs[fut]
-            rec = {"text": t, "model": m, "effort": e, "run": r, **fut.result()}
-            out.write(json.dumps(rec, ensure_ascii=False) + "\n")
-            out.flush()
-            done += 1
-            status = "ERROR " + rec["error"][:80] if "error" in rec else "ok" if rec["content"] else f"EMPTY (finish_reason={rec['finish_reason']})"
-            print(f"[{done}/{len(jobs)}] {t} | {m} | effort {e} | run {r}: {status}", flush=True)
-    out.close()
+    with (Path(run_dir) / '.runner.lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        execute_jobs(run_dir, jobs, texts, template, key, args.max_tokens, args.concurrency)
     print(f"\nRaw answers: {run_dir}/raw.jsonl\n")
     summarize(run_dir)
 

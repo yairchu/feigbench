@@ -229,9 +229,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("run_dir")
     args = parser.parse_args()
-    from run_bench import run_targets, score
+    from run_bench import run_targets, score, effective_records, read_attempts
     targets, _ = run_targets(args.run_dir)
-    records = [json.loads(line) for line in (Path(args.run_dir) / "raw.jsonl").read_text().splitlines() if line.strip()]
+    records = effective_records(read_attempts(args.run_dir))
     plot_results(args.run_dir, [score(r, targets) for r in records])
 
 

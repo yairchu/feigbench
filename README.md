@@ -86,6 +86,8 @@ uv run run_bench.py --texts 'S*' --runs 5     # only the excerpts
 uv run run_bench.py --efforts low medium high --runs 1 --dry-run # preview an effort sweep
 uv run run_bench.py --efforts low medium high --runs 1 # run all three settings
 uv run run_bench.py --summarize results/<dir> # re-score an existing run
+uv run run_bench.py --resume results/<dir> --dry-run # count unfinished/API-failed calls offline
+uv run run_bench.py --resume results/<dir>   # continue after topping up or an interruption
 uv run plot_bench.py results/<dir>           # regenerate just the cost/score chart
 uv run speaker_report.py results/<dir>       # non-Israeli highest-confidence speaker guesses
 uv run python -m unittest discover tests             # offline tests, no key or network needed
@@ -139,6 +141,12 @@ All requests omit `temperature`, using each model/provider's default sampling be
 ```bash
 uv run run_bench.py --models anthropic/claude-haiku-5.5,openai/gpt-6-luna --texts S1_burned_cities_paraphrased --efforts low --runs 1
 ```
+
+Resume uses the run's saved texts, prompt, roster, effort settings, and token limit, ignoring current experiment options and workspace inputs. It requires an input snapshot and provider-default sampling. Stop the original process before resuming; older runners do not participate in the new writer lock. The original raw log remains an append-only attempt history. Summaries, plots, and speaker reports select one result per text × model × effort × repetition: the first response without an API error, or the latest error if there has been no response. API failures and missing calls are retried; answered trials, including truncated, unparseable, or low-scoring replies, are never automatically resampled. This avoids selectively improving scores. A timeout may still have incurred provider charges even if no reply was saved.
+
+New runner processes keep only the configured number of calls in flight. On HTTP 401/402 they stop scheduling, save remaining in-flight replies, and generate partial summaries. Ctrl-C likewise stops scheduling and waits for in-flight calls to be saved. Top up the balance or raise/reset the API key's spending limit as appropriate, then resume the same directory. These changes do not alter a process that was already running when the code was updated.
+
+Resumptions save their executor/scorer sources under `resumptions/<timestamp>/code/`, preserving the original run's snapshot. `resumptions/latest.json` points to the latest source copy. Use the current runner (or that saved resume runner) for reports after resuming; the original pre-resume scorer may not understand repeated attempts in the raw log. Saved model responses and input snapshots remain unchanged.
 
 To probe Gemini Flash's high-effort token budget across all six rewritten inputs, use a separate run with a 32,000-token limit:
 

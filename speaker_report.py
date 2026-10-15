@@ -7,7 +7,7 @@ import unicodedata
 from collections import Counter, defaultdict
 from pathlib import Path
 
-from run_bench import is_control, normalized_candidates, parse_answer
+from run_bench import is_control, normalized_candidates, parse_answer, effective_records, read_attempts
 
 CATALOG = Path(__file__).with_name('speaker_origins.json')
 
@@ -79,7 +79,7 @@ def cell(value):
 def write_report(run_dir, records=None):
     directory = Path(run_dir)
     if records is None:
-        records = [json.loads(line) for line in (directory / 'raw.jsonl').read_text().splitlines() if line.strip()]
+        records = effective_records(read_attempts(directory))
     catalog = json.loads(CATALOG.read_text())
     choices = first_choices(records, catalog)
     summary = summarize_choices(choices)
