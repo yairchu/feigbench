@@ -146,10 +146,13 @@ def plot_results(run_dir, rows):
     legend_labels += ["Effort within a model", "Models at medium effort"]
     effort_levels = sorted({p["effort"] for p in points}, key=lambda e: EFFORT_ORDER.index(e) if e in EFFORT_ORDER else -1)
     effort_sizes = {effort: 45 + index * 35 for index, effort in enumerate(effort_levels)}
+    hollow_efforts = {"high"}
+    if len(effort_levels) > 1:
+        hollow_efforts.add(effort_levels[0])
     for effort in effort_levels:
         legend_handles.append(Line2D([], [], linestyle="none", marker="o", color=muted,
                                      markersize=math.sqrt(effort_sizes[effort]),
-                                     markerfacecolor=background if effort == effort_levels[0] and len(effort_levels) > 1 else muted))
+                                     markerfacecolor=background if effort in hollow_efforts else muted))
         legend_labels.append(effort.capitalize())
     legend = fig.legend(legend_handles, legend_labels, loc="upper left", bbox_to_anchor=(.795, .79),
                         frameon=False, fontsize=10, labelspacing=.8, handlelength=2.2,
@@ -195,7 +198,7 @@ def plot_results(run_dir, rows):
     for p in points:
         color, marker = styles[p["model"]]["color"], styles[p["model"]]["marker"]
         x, y = p["mean_cost_usd"], p["soft_score"]
-        hollow = p["effort"] == effort_levels[0] and len(effort_levels) > 1
+        hollow = p["effort"] in hollow_efforts
         ax.scatter(x, y, s=effort_sizes[p["effort"]], facecolor=background if hollow else color,
                    marker=marker, edgecolor=color, linewidth=1.5, zorder=3)
         if p is not label_points[p["model"]]:
