@@ -15,11 +15,10 @@ VENDOR_COLORS = {"anthropic": "#cb6d43", "google": "#397bca", "openai": "#169987
                  "deepseek": "#537b38", "mistralai": "#b18a24", "qwen": "#526099"}
 VENDOR_NAMES = {"anthropic": "Anthropic", "google": "Google", "openai": "OpenAI",
                 "meta": "Meta", "meta-llama": "Meta", "x-ai": "xAI"}
-MARKERS = ("o", "s", "D", "^", "P", "X", "v", "*", "<", ">")
 
 
 def model_styles(models):
-    """Share a vendor color; assign distinct shapes to its models."""
+    """Share one color and circle marker across each vendor's models."""
     grouped = defaultdict(list)
     for model in sorted(set(models)):
         grouped[model.split("/")[0]].append(model)
@@ -27,8 +26,8 @@ def model_styles(models):
     for vendor, names in grouped.items():
         fallback = ("#537b38", "#b18a24", "#526099", "#93654b")
         color = VENDOR_COLORS.get(vendor, fallback[int(hashlib.sha256(vendor.encode()).hexdigest()[:8], 16) % len(fallback)])
-        for index, model in enumerate(names):
-            styles[model] = dict(color=color, marker=MARKERS[index % len(MARKERS)])
+        for model in names:
+            styles[model] = dict(color=color, marker="o")
     return styles
 
 
@@ -114,7 +113,7 @@ def plot_results(run_dir, rows):
     fig, ax = plt.subplots(figsize=(14, 8))
     fig.patch.set_facecolor(background)
     ax.set_facecolor(background)
-    fig.subplots_adjust(left=.08, right=.73, top=.78, bottom=.23)
+    fig.subplots_adjust(left=.08, right=.78, top=.78, bottom=.23)
     fig.text(.10, .93, "FEIGBENCH", fontsize=11, weight="bold", color=muted)
     fig.text(.10, .865, "Recognition, at what cost?", fontsize=27, weight="bold", color=ink)
     fig.text(.10, .815, "Disguised interviews · soft identification score · higher and further left is better",
@@ -139,20 +138,24 @@ def plot_results(run_dir, rows):
     ax.set_xlabel("Average cost per request (USD" + (", logarithmic scale)" if positive else ")"),
                   color=ink, fontsize=11, labelpad=14)
     ax.set_ylabel("Soft score / 100", color=ink, fontsize=11, labelpad=12)
-    legend_handles, legend_labels, vendor_headers = [], [], []
+    legend_handles, legend_labels = [], []
     for vendor in sorted({m.split("/")[0] for m in styles}):
-        vendor_headers.append(len(legend_labels))
-        legend_handles.append(Line2D([], [], linestyle="none"))
+        example = next(m for m in styles if m.split("/")[0] == vendor)
+        legend_handles.append(Line2D([], [], linestyle="none", markersize=7, **styles[example]))
         legend_labels.append(VENDOR_NAMES.get(vendor, vendor))
-        for model in sorted(m for m in styles if m.split("/")[0] == vendor):
-            legend_handles.append(Line2D([], [], linestyle="-", linewidth=1.4, markersize=8,
-                                         markeredgecolor="white", **styles[model]))
-            legend_labels.append(model.split("/")[-1])
-    legend = fig.legend(legend_handles, legend_labels, loc="upper left", bbox_to_anchor=(.755, .79),
+    legend_handles += [Line2D([], [], color=muted, linewidth=1.5),
+                       Line2D([], [], color=muted, linewidth=1.2, linestyle="--")]
+    legend_labels += ["Effort within a model", "Models at same effort"]
+    effort_levels = sorted({p["effort"] for p in points}, key=lambda e: EFFORT_ORDER.index(e) if e in EFFORT_ORDER else -1)
+    effort_sizes = {effort: 45 + index * 35 for index, effort in enumerate(effort_levels)}
+    for effort in effort_levels:
+        legend_handles.append(Line2D([], [], linestyle="none", marker="o", color=muted,
+                                     markersize=math.sqrt(effort_sizes[effort]),
+                                     markerfacecolor=background if effort == effort_levels[0] and len(effort_levels) > 1 else muted))
+        legend_labels.append(effort.capitalize())
+    legend = fig.legend(legend_handles, legend_labels, loc="upper left", bbox_to_anchor=(.795, .79),
                         frameon=False, fontsize=10, labelspacing=.8, handlelength=2.2,
-                        title="Vendor color · model shape", title_fontsize=10)
-    for index in vendor_headers:
-        legend.get_texts()[index].set_weight("bold")
+                        title="Vendor / connections", title_fontsize=10)
     for text in legend.get_texts():
         text.set_color(ink)
     series = defaultdict(list)
@@ -163,6 +166,17 @@ def plot_results(run_dir, rows):
     for p in points:
         if p["effort"] in EFFORT_ORDER:
             series[p["model"]].append(p)
+    vendor_efforts = defaultdict(list)
+    for p in points:
+        vendor_efforts[(p["model"].split("/")[0], p["effort"])].append(p)
+    for (_, effort), ps in vendor_efforts.items():
+        ps.sort(key=lambda p: p["mean_cost_usd"])
+        for left, right in zip(ps, ps[1:]):
+            if cohorts[(left["model"], effort)] == cohorts[(right["model"], effort)]:
+                ax.plot([left["mean_cost_usd"], right["mean_cost_usd"]],
+                        [left["soft_score"], right["soft_score"]],
+                        color=styles[left["model"]]["color"], linestyle=(0, (4, 4)),
+                        linewidth=1.1, alpha=.4, zorder=1)
     multiple = any(len(ps) > 1 for ps in series.values())
     if multiple:
         for model, ps in sorted(series.items()):
@@ -176,21 +190,19 @@ def plot_results(run_dir, rows):
             elif not comparable:
                 print(f"Not connecting {model}: effort settings have different evaluation cohorts.")
     annotations = []
+    label_points = {model: max((p for p in points if p["model"] == model),
+                              key=lambda p: EFFORT_ORDER.index(p["effort"]) if p["effort"] in EFFORT_ORDER else -1)
+                    for model in styles}
     for p in points:
         color, marker = styles[p["model"]]["color"], styles[p["model"]]["marker"]
         x, y = p["mean_cost_usd"], p["soft_score"]
-        ax.scatter(x, y, s=450, color=color, marker=marker, alpha=.08, linewidth=0)
-        ax.scatter(x, y, s=115, color=color, marker=marker, edgecolor="white", linewidth=1.5, zorder=3)
-        label = p["model"].split("/")[-1].replace("-", " ")
-        connected = multiple and len(series.get(p["model"], [])) > 1 and p["effort"] != "default"
-        if connected:
-            label = p["effort"]
-            offset = {"low": (0, -24), "medium": (0, 18), "high": (0, 18)}.get(p["effort"], (0, 18))
-        else:
-            label += f" ({p['effort']})" if p["effort"] != "default" else ""
-            label += f"\n{y:.1f} pts · ${x:.5f}"
-            offset = (0, 19)
-        annotations.append(ax.annotate(label, (x, y), xytext=offset,
+        hollow = p["effort"] == effort_levels[0] and len(effort_levels) > 1
+        ax.scatter(x, y, s=effort_sizes[p["effort"]], facecolor=background if hollow else color,
+                   marker=marker, edgecolor=color, linewidth=1.5, zorder=3)
+        if p is not label_points[p["model"]]:
+            continue
+        label = p["model"].split("/")[-1].removeprefix("claude-").replace("-", " ")
+        annotations.append(ax.annotate(label, (x, y), xytext=(0, 20),
                     textcoords="offset points", ha="center", fontsize=9, color=ink,
                     bbox=dict(boxstyle="round,pad=.15", fc=background, ec="none", alpha=.94),
                     arrowprops=dict(arrowstyle="-", color=color, lw=.6, alpha=.6),
