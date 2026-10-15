@@ -67,7 +67,7 @@ The manual runs had confounds this script removes:
 - **Personalization and memory.** ChatGPT's "personalized" Temporary Chat still applied custom instructions. The API has none.
 - **Location.** ChatGPT appears to receive the user's approximate location (Israel). S1 and S2 jumped to Israel without web search but not with it. API calls carry no location.
 - **Web search.** Some manual runs searched despite instructions. Plain API calls don't search. Don't use model ids ending in `:online`.
-- **Single runs.** Each text × model now runs several times (default 3, temperature 1.0) to measure variance.
+- **Single runs.** Each text × model now runs several times (default 3, provider-default sampling) to measure variance.
 - **Inconsistent prompts.** One fixed prompt (`prompts/identify.md`) asks for the top 3 contexts and top 5 speakers as JSON, so scoring is automatic.
 
 ## Running
@@ -134,7 +134,7 @@ OpenRouter supports [reasoning effort settings](https://openrouter.ai/docs/guide
 
 Effort is saved in the run configuration, raw records, and every summary. The chart connects explicit effort points in effort order when their texts and run counts match. `--efforts default` (the default) leaves effort unspecified; older runs without effort metadata are also labeled `default` and never assigned a guessed level or connected into an effort series. Effort levels describe requested settings rather than measured compute, and their meaning differs across providers. Additional live runs are needed to measure the cost/score tradeoff; existing replies cannot be rescored into new effort levels.
 
-During explicit effort sweeps, models whose advertised `supported_parameters` omit `temperature` use their provider's temperature default. The runner prints this and records `effective_temperatures` in `config.json` (`null` means omitted). Sending temperature to these models with strict parameter routing would reject every endpoint even when reasoning effort is supported. To smoke-test routing before a full sweep, run one text and one effort level first:
+All requests omit `temperature`, using each model/provider's default sampling behavior. The CLI has no temperature override, and new run configurations record this sampling policy. Effort remains explicit when requested, and repeated calls measure variability under the defaults. Historical configurations retain their original temperature settings. To smoke-test routing before a full sweep, run one text and one effort level first:
 
 ```bash
 uv run run_bench.py --models anthropic/claude-haiku-5.5,openai/gpt-6-luna --texts S1_burned_cities_paraphrased --efforts low --runs 1

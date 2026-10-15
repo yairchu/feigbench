@@ -152,14 +152,12 @@ def load_texts(pattern, include_originals=False):
     return {os.path.splitext(os.path.basename(p))[0]: Path(p).read_text().strip() for p in paths}
 
 
-def call(model, prompt, temperature, key, max_tokens, effort="default"):
+def call(model, prompt, key, max_tokens, effort="default"):
     body = {
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "max_tokens": max_tokens,
     }
-    if temperature is not None:
-        body["temperature"] = temperature
     if effort != "default":
         body["reasoning"] = {"effort": effort}
         body["provider"] = {"require_parameters": True}
@@ -364,7 +362,6 @@ def main():
     ap.add_argument("--include-originals", action="store_true", help="include original excerpts alongside paraphrases in glob selections")
     ap.add_argument("--prompt", default=os.path.join(ROOT, "prompts", "identify.md"))
     ap.add_argument("--runs", type=int, default=3)
-    ap.add_argument("--temperature", type=float, default=1.0)
     ap.add_argument("--max-tokens", type=int, default=16000, help="includes hidden reasoning tokens on reasoning models")
     ap.add_argument("--efforts", nargs="+", choices=EFFORTS, default=["default"],
                     type=lambda e: "medium" if e == "mid" else e,
@@ -405,19 +402,13 @@ def main():
         reasoning_models = validate_efforts(models, efforts)
     except (ValueError, CertificateError, urllib.error.URLError) as e:
         sys.exit(str(e))
-    temperatures = {}
-    for model in models:
-        parameters = reasoning_models.get(model, {}).get("supported_parameters")
-        temperatures[model] = args.temperature if parameters is None or "temperature" in parameters else None
-        if temperatures[model] is None:
-            print(f"{model}: omitting temperature (not advertised as supported); using provider default")
 
     run_dir = os.path.join(args.results_dir, datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
     os.makedirs(run_dir)
     snapshot_run(run_dir, texts, template, targets)
-    (Path(run_dir) / "config.json").write_text(json.dumps({"models": models, "texts": list(texts), "runs": args.runs, "temperature": args.temperature,
+    (Path(run_dir) / "config.json").write_text(json.dumps({"models": models, "texts": list(texts), "runs": args.runs,
                "efforts": efforts, "reasoning_models": reasoning_models, "max_tokens": args.max_tokens,
-               "effective_temperatures": temperatures,
+               "sampling": "provider defaults (temperature omitted)",
                "scoring_version": SCORING_VERSION, "text_selection": args.texts,
                "include_originals": args.include_originals,
                "prompt": template}, indent=2, ensure_ascii=False) + "\n")
@@ -425,7 +416,7 @@ def main():
     out = open(os.path.join(run_dir, "raw.jsonl"), "w")
     done = 0
     with ThreadPoolExecutor(args.concurrency) as ex:
-        futs = {ex.submit(call, m, template.replace("{{TEXT}}", texts[t]), temperatures[m], key, args.max_tokens, e): (t, m, e, r)
+        futs = {ex.submit(call, m, template.replace("{{TEXT}}", texts[t]), key, args.max_tokens, e): (t, m, e, r)
                 for t, m, e, r in jobs}
         for fut in as_completed(futs):
             t, m, e, r = futs[fut]

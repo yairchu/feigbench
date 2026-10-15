@@ -143,7 +143,7 @@ class CertificateTest(unittest.TestCase):
 
     def test_certificate_failure_is_not_retried(self):
         with mock.patch.object(run_bench.time, "sleep") as sleep:
-            result = run_bench.call("mock/model", "prompt", 1, "test", 100)
+            result = run_bench.call("mock/model", "prompt", "test", 100)
         self.assertIn("TLS certificate verification failed", result["error"])
         self.urlopen.assert_called_once()
         sleep.assert_not_called()
@@ -265,16 +265,14 @@ class EffortTest(unittest.TestCase):
     def test_request_body_and_default(self):
         reply = {"choices": [{"message": {"content": json.dumps(CLEAN)}, "finish_reason": "stop"}]}
         with mock.patch.object(run_bench, "http", return_value=reply) as http:
-            run_bench.call("m", "prompt", 1, "key", 16000, "low")
+            run_bench.call("m", "prompt", "key", 16000, "low")
             body = http.call_args.args[2]
             self.assertEqual(body["reasoning"], {"effort": "low"})
             self.assertTrue(body["provider"]["require_parameters"])
-            run_bench.call("m", "prompt", 1, "key", 16000)
+            self.assertNotIn("temperature", body)
+            run_bench.call("m", "prompt", "key", 16000)
             self.assertNotIn("reasoning", http.call_args.args[2])
-            run_bench.call("m", "prompt", None, "key", 16000, "low")
             self.assertNotIn("temperature", http.call_args.args[2])
-            self.assertEqual(http.call_args.args[2]["reasoning"], {"effort": "low"})
-            self.assertTrue(http.call_args.args[2]["provider"]["require_parameters"])
 
     def test_preflight_support(self):
         catalog = {"data": [{"id": "m", "reasoning": {
@@ -302,7 +300,7 @@ class EffortTest(unittest.TestCase):
             run_bench.main()
             run_dir, = glob.glob(os.path.join(directory, "2*"))
             self.assertEqual(call.call_count, 3)
-            self.assertTrue(all(c.args[2] == 1.0 for c in call.call_args_list))
+            self.assertTrue(all(c.args[2] == 'test' for c in call.call_args_list))
             self.assertEqual({c.args[-1] for c in call.call_args_list}, {"low", "medium", "high"})
             for name in ("scored.csv", "summary.csv"):
                 self.assertEqual({r["effort"] for r in read_csv(os.path.join(run_dir, name))}, {"low", "medium", "high"})
@@ -313,19 +311,22 @@ class EffortTest(unittest.TestCase):
             self.assertEqual(len(points), 3)
             self.assertTrue(all(p["calls"] == 1 for p in points))
 
-    def test_sweep_omits_unsupported_temperature(self):
+    def test_records_provider_default_sampling(self):
         with tempfile.TemporaryDirectory() as directory, \
-             mock.patch.object(run_bench, "call", return_value={"error": "test"}) as call, \
-             mock.patch.object(run_bench, "validate_efforts", return_value={"m": {"supported_parameters": ["reasoning", "max_tokens"]}}), \
+             mock.patch.object(run_bench, "http", return_value={"choices": [{"message": {"content": json.dumps(CLEAN)}}]}) as http, \
+             mock.patch.object(run_bench, "validate_efforts", return_value={"m": {"supported_parameters": ["reasoning", "max_tokens", "temperature"]}}), \
              mock.patch.dict(os.environ, {"OPENROUTER_API_KEY": "test"}), \
              mock.patch.object(sys, "argv", ["run_bench.py", "--models", "m", "--texts", "S1_burned_cities", "--runs", "1",
                                              "--efforts", "low", "--results-dir", directory]), \
              mock.patch("sys.stdout", new=io.StringIO()), mock.patch("plot_bench.plot_results"):
             run_bench.main()
-            self.assertIsNone(call.call_args.args[2])
+            self.assertNotIn('temperature', http.call_args.args[2])
             run_dir, = glob.glob(os.path.join(directory, "2*"))
             with open(os.path.join(run_dir, "config.json")) as f:
-                self.assertEqual(json.load(f)["effective_temperatures"], {"m": None})
+                config = json.load(f)
+            self.assertNotIn('temperature', config)
+            self.assertNotIn('effective_temperatures', config)
+            self.assertEqual(config['sampling'], 'provider defaults (temperature omitted)')
 
 
 if __name__ == "__main__":
