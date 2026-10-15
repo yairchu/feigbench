@@ -148,6 +148,14 @@ uv run run_bench.py --models google/gemini-3.8-flash --efforts high --runs 3 --m
 
 This makes 18 calls. Check `summary.csv` for truncations and `scored.csv` for actual token usage. If 32,000 still truncates, try 48,000 before choosing the final benchmark budget; the provider must support the selected limit. A larger budget is not guaranteed to eliminate truncations, and changing it can affect both reasoning behavior and cost. Choose the final budget before the main comparison.
 
+To screen the three additional vendors in `models_candidates.txt` without changing the main roster:
+
+```bash
+uv run run_bench.py --models models_candidates.txt --efforts medium --runs 1 --max-tokens 32000
+```
+
+This makes 18 calls across the six rewritten texts. Compare the S1–S5 averages in `model_summary.csv`, with S6 reported separately in `control_summary.csv`. Use the exploratory results to choose two vendors for the full run; repeat close results before treating small differences as decisive. The Qwen ID pins a dated snapshot rather than a moving model alias. Document this exploratory screening when reporting the final model selection.
+
 ## Next steps
 
 1. **Run the rewritten excerpts** across 4–6 models, 3 runs each; use A–H as optional diagnostics.

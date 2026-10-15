@@ -1,0 +1,6 @@
+# Exploratory vendor shortlist; separate from the main benchmark roster.
+# Compare scored S1–S5 at medium effort; inspect S6 separately.
+# The Qwen suffix pins a specific snapshot for reproducibility.
+qwen/qwen3.8-max-0902
+moonshotai/kimi-k3
+deepseek/deepseek-v4.1-flash
