@@ -1,6 +1,6 @@
 # feigbench
 
-The local interactive landing-page draft is documented in [site/README.md](site/README.md). Build it with `uv run export_site.py results/20261015-145656`, then open `site/dist/index.html`.
+The interactive landing-page draft and GitHub Pages setup are documented in [site/README.md](site/README.md). Build it with `uv run --locked export_site.py site/data/20261015-145656`, then open `site/dist/index.html`.
 
 Can LLMs identify the speaker of a real political interview after it has been disguised?
 

@@ -1,0 +1,45 @@
+{
+  "texts": {
+    "S1_burned_cities_paraphrased": "# Excerpt from a conversation\n\n**SPEAKER:** Replacing the clan chiefs would not amount to winning. Consider the warrior-king from our grandparents' generation and his campaign against the plains tyrant. He treated the enemy population as guilty without exception, rather than directing his attack solely at its rulers. His army set entire camps and fortified towns ablaze, killing children as well, without trying to protect them. I endorse that approach as the measure of victory.",
+    "S2_expulsion_paraphrased": "# Excerpt from a conversation\n\n**SPEAKER:** We cannot win while following the existing rules. We must keep the pastures at the foot of the mountains for good, drive out the clans living on them, and bring in farmers and herders from our own people. Look at the higher valleys: generations ago we removed their inhabitants and established our villages there. Attacks no longer come from those places. To my mind, there is no alternative.",
+    "S3_treaty_mindset_paraphrased": "# Excerpt from a conversation\n\n**SPEAKER:** Winning is not the ruler's objective. He wants the familiar pattern back: raids during summer, followed by winter ceasefires. That pattern rests on the assumptions of the Ford Treaty, which still constrain our leaders. Successive governing factions have all preserved those assumptions, even factions professing opposition. Ending their hold would mean replacing the entire political establishment. Those in office value remaining there above any other consideration. The ruler's denunciations of the Treaty are therefore performances intended to please his audience. What he actually does remains the same; his words offer no departure from the policies he continues to pursue.",
+    "S4_tactics_vs_strategy_paraphrased": "# Excerpt from a conversation\n\n**SPEAKER:** The conduct of our warriors and the direction given by our leaders must be judged separately. On the battlefield, our men show courage, prevail, and kill thousands of their opponents; I welcome those deaths. Yet those running the campaign are pursuing a course that will ultimately squander these successes and bring defeat. The clans may turn their devastated camps into an emblem of defiance. Our children would then descend through the passes to wage another campaign for the very same pastures.\n\nThere is a proposal to keep watchtowers beside the river once fighting ends, allowing our riders to enter whenever they choose. I oppose it. Earlier attempts of this kind ended badly: constant losses among our warriors would prompt villagers in the mountains to demand their return, until we withdrew from the towers as well. Commit all our force to settling the war swiftly, then address what follows. Whoever leads us must either do that or relinquish office.",
+    "S5_no_treaty_no_expulsion_paraphrased": "# A conversation recorded by the chronicler\n\n**CHRONICLER:** What is your assessment of the fighting with the steppe clans up to now?\n\n**SPEAKER:** Our ruler's purpose is not to win. He wants the familiar pattern restored: raids in summer and ceasefires through winter.\n\n**CHRONICLER:** How would you define winning?\n\n**SPEAKER:** Replacing the clan chiefs would not amount to winning. Consider the warrior-king from our grandparents' generation and his campaign against the plains tyrant. He treated the enemy population as guilty without exception, rather than directing his attack solely at its rulers. His army set entire camps and fortified towns ablaze, killing children as well, without trying to protect them. I endorse that approach as the measure of victory.\n\n**CHRONICLER:** Yet our warriors keep prevailing on the battlefield.\n\n**SPEAKER:** The conduct of our warriors and the direction given by our leaders must be judged separately. On the battlefield, our men show courage, prevail, and kill thousands of their opponents; I welcome those deaths. Yet those running the campaign are pursuing a course that will ultimately squander these successes and bring defeat. The clans may turn their devastated camps into an emblem of defiance. Our children would then descend through the passes to wage another campaign for the very same pastures.\n\n**CHRONICLER:** What about keeping watchtowers beside the river when fighting ends, allowing our riders to enter whenever they choose?\n\n**SPEAKER:** I oppose it. Earlier attempts of this kind ended badly: constant losses among our warriors would prompt villagers in the mountains to demand their return, until we withdrew from the towers as well. Commit all our force to settling the war swiftly, then address what follows. Whoever leads us must either do that or relinquish office.\n\n**CHRONICLER:** What would you put forward instead?\n\n**SPEAKER:** Replace those in charge with leaders who give the mountain realm a different direction, guided by the aspirations of our own people.",
+    "S6_leadership_only_control_paraphrased": "# Excerpt from a conversation\n\n**SPEAKER:** Our governing class remains captive to inherited assumptions. Successive factions in office have all upheld them, even factions professing opposition. Escaping them would mean replacing the entire political establishment, whose overriding concern is to retain its position. The ruler's denunciations are performances intended to please his audience, while the policies he pursues remain unchanged. What we need is a different set of leaders, unburdened by those inherited assumptions, to take the realm in a fresh direction guided by the aspirations of our own people."
+  },
+  "prompt": "Below is a text based on a real interview with a real public figure. It may have been disguised: names of people, places, nations, organizations and events may have been replaced, the setting may have been moved to a different era or geography, and the wording may have been paraphrased. The speaker's positions were kept.\n\nDo not search the web. Answer only from your own knowledge.\n\n1. Which real-world conflict, country and period do you think the original text is about? Give up to 3 distinct alternative source contexts.\n2. Who do you think the real speaker is? Give up to 5 distinct candidates.\n\nConfidence values are probabilities from 0 to 100. Within each list separately, their sum must not exceed 100. Any remaining probability represents other or unknown possibilities; do not redistribute it among the listed guesses. Give fewer guesses, or an empty list, when the evidence is insufficient. Do not list overlapping descriptions of the same source context as separate guesses.\n\nReply with JSON only, no other text, in exactly this shape:\n\n{\n  \"context\": [\n    {\"guess\": \"...\", \"confidence\": 0}\n  ],\n  \"speakers\": [\n    {\"name\": \"...\", \"confidence\": 0, \"clues_for\": \"...\", \"clues_against\": \"...\"}\n  ],\n  \"most_revealing_clue\": \"...\"\n}\n\nTEXT:\n---\n{{TEXT}}\n---\n",
+  "targets": {
+    "default": {
+      "speaker": [
+        "feiglin",
+        "feiglen",
+        "פייגלין",
+        "פיגלין"
+      ],
+      "context": [
+        "israel",
+        "gaza",
+        "palestin",
+        "ישראל",
+        "עזה"
+      ]
+    }
+  },
+  "scoring_version": "soft-confidence-v2",
+  "controls": [
+    "S6_leadership_only_control_paraphrased"
+  ],
+  "code_commit": "df88419489cd70e23a05cff9eeffee8ceb2c7576",
+  "code_dirty": false,
+  "source_sha256": {
+    "run_bench.py": "11a025398e1c535267eeaf82fb033f143587e2bd46eb8d0eb5d7d2b8d0bf776f",
+    "plot_bench.py": "bb6ae8796e9060cc04efff69da77823717623d29f68012ef5cd1c8fa146d1d47",
+    "speaker_report.py": "53455506a92d57763d7f2f8c577739696ed0819c396b904f5d86b6e914bfc894",
+    "speaker_origins.json": "e12f2b70f04deab8f0d0a41fba3119006fa0a2084a080e43e9ce449cb2c0a03b",
+    "pyproject.toml": "de1fef39d318209b141581b8ca8b0df0c3a631656b40ee98ff3c6ce382ebeb41",
+    "uv.lock": "466eda153ad741f5f4630900d27f1785768714f4441550752003771e860e31fd",
+    "README.md": "a546306848c261b2d286ffd169ef56ea435c473962d48d1795bef631a7cf4399"
+  },
+  "python_version": "3.13.13 (main, May 10 2026, 19:20:37) [Clang 22.1.3 ]",
+  "api_base_url": "https://openrouter.ai/api/v1"
+}
