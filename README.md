@@ -1,5 +1,7 @@
 # feigbench
 
+The local interactive landing-page draft is documented in [site/README.md](site/README.md). Build it with `uv run export_site.py results/20261015-145656`, then open `site/dist/index.html`.
+
 Can LLMs identify the speaker of a real political interview after it has been disguised?
 
 The source is a ~24 minute interview with **Moshe Feiglin** on Channel 7 (Arutz Sheva / inn.co.il, late 2023 – early 2024), about the Gaza war after October 7. The interview was transcribed (OCR of burned-in subtitles, `source/transcript_he_ocr.md`), translated to English, and then disguised in progressively stronger steps. Each version is a text in `texts/`. The benchmark asks models to name the conflict and the speaker, and measures how often they get to Feiglin.
